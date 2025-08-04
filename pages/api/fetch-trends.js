@@ -1,8 +1,6 @@
 // File: /pages/api/fetch-trends.js
 
 import googleTrends from 'google-trends-api';
-import fs from 'fs';
-import path from 'path';
 
 export default async function handler(req, res) {
   try {
@@ -18,34 +16,41 @@ export default async function handler(req, res) {
           startTime,
           endTime,
           geo: '', // global
+        }).catch(err => {
+          console.error(`Trend fetch failed for ${kw}:`, err.message);
+          return null;
         })
       )
     );
 
-    // Parse results
-    const parsed = results.map((r, i) => ({
-      keyword: keywords[i],
-      data: JSON.parse(r)
-    }));
+    // Parse and normalize
+    const timelineMap = new Map();
 
-    const payload = {
-      status: 'ok',
-      fetchedAt: new Date().toISOString(),
-      trends: parsed
-    };
+    keywords.forEach((keyword, i) => {
+      if (!results[i]) return;
+      let trendData;
+      try {
+        trendData = JSON.parse(results[i]);
+      } catch (err) {
+        console.warn(`Failed to parse result for ${keyword}`, err.message);
+        return;
+      }
 
-    // Store result in a local JSON file (if writable in Vercel build or test env)
-    const filePath = path.join(process.cwd(), 'trends-latest.json');
-    try {
-      fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
-      console.log('Saved trends to trends-latest.json');
-    } catch (fileErr) {
-      console.warn('Could not write to trends-latest.json (may not be allowed on Vercel):', fileErr.message);
-    }
+      const timeline = trendData?.default?.timelineData || [];
+      timeline.forEach(({ time, value }) => {
+        const timestamp = new Date(parseInt(time) * 1000).toISOString();
+        if (!timelineMap.has(timestamp)) {
+          timelineMap.set(timestamp, { date: timestamp });
+        }
+        timelineMap.get(timestamp)[keyword] = value[0];
+      });
+    });
 
-    res.status(200).json(payload);
+    const normalized = Array.from(timelineMap.values()).sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    res.status(200).json(normalized);
   } catch (err) {
-    console.error('Error fetching trends:', err);
-    res.status(500).json({ error: 'Failed to fetch trends' });
+    console.error('Error fetching trends:', err.message);
+    res.status(500).json({ error: 'Failed to fetch trends', detail: err.message });
   }
 }
