@@ -23,7 +23,9 @@ export default function Home() {
           label: keyword,
           data: json.map(row => row[keyword]),
           fill: false,
-          borderColor: '#' + Math.floor(Math.random()*16777215).toString(16),
+          const colors = ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#000000'];
+borderColor: colors[i % colors.length],
+
         }));
         setLabels(labels);
         setDatasets(datasets);
