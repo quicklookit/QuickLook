@@ -11,10 +11,29 @@ export default function Home() {
   const [datasets, setDatasets] = useState([]);
   const [average, setAverage] = useState(0);
 
-  useEffect(() => {
-    fetch('/api/fetch-trends')
-      .then(res => res.json())
-      .then(json => {
+ useEffect(() => {
+  fetch('/api/fetch-trends')
+    .then(res => res.json())
+    .then(json => {
+      if (json.length === 0) return;
+
+      const keywords = Object.keys(json[0]).filter(k => k !== 'date');
+      const labels = json.map(row => row.date);
+      const datasets = keywords.map(keyword => ({
+        label: keyword,
+        data: json.map(row => row[keyword]),
+        fill: false,
+        borderColor: '#' + Math.floor(Math.random()*16777215).toString(16),
+      }));
+      setLabels(labels);
+      setDatasets(datasets);
+
+      const latest = json[json.length - 1];
+      const avg = keywords.reduce((sum, k) => sum + parseFloat(latest[k] || 0), 0) / keywords.length;
+      setAverage(avg);
+    });
+}, []);
+
         if (json.length === 0) return;
         const keywords = Object.keys(json[0]).filter(k => k !== 'date');
         const labels = json.map(row => row.date);
