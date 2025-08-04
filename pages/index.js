@@ -35,7 +35,7 @@ export default function Home() {
 
   return (
     <main className="p-8 font-sans">
-      <h1 className="text-2xl font-bold mb-4">📈 Weekly Market Trends</h1>
+      <h1 className="text-2xl font-bold mb-4">📈 Quick Look Trends</h1>
       <Thermometer value={average} />
       <div className="bg-white p-4 rounded shadow">
         <Line data={{ labels, datasets }} />
