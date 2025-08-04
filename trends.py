@@ -10,7 +10,7 @@ KEYWORDS = [
 
 def fetch_trends():
     pytrends = TrendReq()
-    pytrends.build_payload(KEYWORDS, timeframe='today 7-d')
+    pytrends.build_payload(KEYWORDS, timeframe='now 1-d')
     df = pytrends.interest_over_time().drop(columns=['isPartial'])
     df.reset_index(inplace=True)
     return df
