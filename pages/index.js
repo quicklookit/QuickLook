@@ -12,7 +12,7 @@ export default function Home() {
   const [average, setAverage] = useState(0);
 
   useEffect(() => {
-    fetch('https://your-backend-url.com/weekly-data')
+    fetch('/api/fetch-trends')
       .then(res => res.json())
       .then(json => {
         if (json.length === 0) return;
