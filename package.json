@@ -1,3 +1,7 @@
+"dependencies": {
+  "google-trends-api": "^4.9.0",
+  ...
+}
 {
   "name": "quick-market-frontend",
   "version": "1.0.0",
