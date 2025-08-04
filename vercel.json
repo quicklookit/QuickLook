@@ -1,0 +1,8 @@
+{
+  "cron": [
+    {
+      "path": "/api/fetch-trends",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}
