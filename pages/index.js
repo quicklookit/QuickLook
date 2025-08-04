@@ -22,7 +22,7 @@ export default function Home() {
           label: keyword,
           data: json.map(row => row[keyword]),
           fill: false,
-          borderColor: '#' + Math.floor(Math.random() * 16777215).toString(16),
+          borderColor: '#' + Math.floor(Math.random()*16777215).toString(16),
         }));
         setLabels(labels);
         setDatasets(datasets);
@@ -37,4 +37,12 @@ export default function Home() {
     <main className="p-8 font-sans">
       <h1 className="text-2xl font-bold mb-4">📈 Quick Look Trends</h1>
       <Thermometer value={average} />
-      <div cla
+      <div className="bg-white p-4 rounded shadow mb-4">
+        <Line data={{ labels, datasets }} />
+      </div>
+      <CorrelationHeatmap />
+      <SubscribeForm />
+    </main>
+  );
+}
+
