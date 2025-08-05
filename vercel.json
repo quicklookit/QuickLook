@@ -1,8 +1,6 @@
 {
-  "cron": [
-    {
-      "path": "/api/fetch-trends",
-      "schedule": "0 * * * *"
-    }
-  ]
+  "crons": [{
+    "path": "/api/cron",
+    "schedule": "0 10 * * *"
+  }]
 }
