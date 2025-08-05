@@ -1,3 +1,4 @@
+{
   "cron": [
     {
       "path": "/api/fetch-trends",
