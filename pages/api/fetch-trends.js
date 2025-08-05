@@ -1,26 +1,37 @@
 // File: /pages/api/fetch-trends.js
+
 import googleTrends from 'google-trends-api';
 
 export default async function handler(req, res) {
   try {
     const keywords = [
-      'lipstick',
-      'cosmetics',
-      'male underwear',
-      'PMI index',
-      'interest rates',
-      'bitcoin',
-      'nasdaq'
+      "cosmetics",
+      "lipstick",
+      "PMI index",
+      "interest rates",
+      "mortgage lending",
+      "credit card debt",
+      "job openings",
+      "house prices",
+      "European Central Bank",
+      "Federal Reserve",
+      "bank of international settlements",
+      "XRP"
     ];
 
     const endTime = new Date();
     const startTime = new Date(Date.now() - 24 * 60 * 60 * 1000); // past 24 hours
 
-    // Fetch trends for each keyword
+    // Fetch interest over time
     const results = await Promise.all(
       keywords.map((kw) =>
         googleTrends
-          .interestOverTime({ keyword: kw, startTime, endTime, geo: '' })
+          .interestOverTime({
+            keyword: kw,
+            startTime,
+            endTime,
+            geo: '', // Global
+          })
           .catch((err) => {
             console.error(`Trend fetch failed for ${kw}:`, err.message);
             return null;
@@ -28,17 +39,15 @@ export default async function handler(req, res) {
       )
     );
 
-    // Normalize and merge
     const timelineMap = new Map();
 
     keywords.forEach((keyword, i) => {
       if (!results[i]) return;
-
       let trendData;
       try {
         trendData = JSON.parse(results[i]);
       } catch (err) {
-        console.warn(`Failed to parse result for ${keyword}:`, err.message);
+        console.warn(`Failed to parse result for ${keyword}`, err.message);
         return;
       }
 
@@ -56,11 +65,11 @@ export default async function handler(req, res) {
       (a, b) => new Date(a.date) - new Date(b.date)
     );
 
-    console.log('Scheduled fetch executed at:', new Date().toISOString());
-
     res.status(200).json(normalized);
-  } catch (error) {
-    console.error('Error in fetch-trends:', error.message);
-    res.status(500).json({ error: 'Failed to fetch trends' });
+  } catch (err) {
+    console.error('Error fetching trends:', err.message);
+    res
+      .status(500)
+      .json({ error: 'Failed to fetch trends', detail: err.message });
   }
 }
