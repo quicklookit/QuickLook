@@ -47,6 +47,7 @@ export default async function handler(req, res) {
     });
 
     const normalized = Array.from(timelineMap.values()).sort((a, b) => new Date(a.date) - new Date(b.date));
+console.log('Scheduled fetch executed at:', new Date().toISOString());
 
     res.status(200).json(normalized);
   } catch (err) {
