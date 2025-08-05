@@ -3,9 +3,9 @@ import googleTrends from 'google-trends-api';
 
 export async function GET() {
   try {
-    const keywords = ['gold', 'bitcoin', 'nasdaq']; // Customize your keywords here
+    const keywords = ['gold', 'bitcoin', 'nasdaq']; 
     const endTime = new Date();
-    const startTime = new Date(Date.now() - 24 * 60 * 60 * 1000); // past 24 hours
+    const startTime = new Date(Date.now() - 24 * 60 * 60 * 1000); 
 
     const results = await Promise.all(
       keywords.map((kw) =>
