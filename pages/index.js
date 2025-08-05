@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { Line } from 'react-chartjs-2';
 import Thermometer from '../components/Thermometer';
 import CorrelationHeatmap from '../components/CorrelationHeatmap';
-import 'chart.js/auto';
 import SubscribeForm from '../components/SubscribeForm';
+import 'chart.js/auto';
 
 export default function Home() {
   const [labels, setLabels] = useState([]);
@@ -11,7 +11,7 @@ export default function Home() {
   const [average, setAverage] = useState(0);
 
   useEffect(() => {
-    fetch('/api/fetch-trends')
+    fetch('/api/cron')
       .then(res => res.json())
       .then(json => {
         if (json.length === 0) return;
@@ -19,7 +19,7 @@ export default function Home() {
         const keywords = Object.keys(json[0]).filter(k => k !== 'date');
         const labels = json.map(row => row.date);
 
-        const colors = ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#000000', '#F0E442', '#56B4E9', '#E69F00'];
+        const colors = ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#000000'];
 
         const datasets = keywords.map((keyword, i) => ({
           label: keyword,
