@@ -1,38 +1,44 @@
 // File: /pages/api/fetch-trends.js
-
 import googleTrends from 'google-trends-api';
 
 export default async function handler(req, res) {
   try {
-    const keywords = ['gold', 'bitcoin', 'nasdaq'];
+    const keywords = [
+      'lipstick',
+      'cosmetics',
+      'male underwear',
+      'PMI index',
+      'interest rates',
+      'bitcoin',
+      'nasdaq'
+    ];
+
     const endTime = new Date();
     const startTime = new Date(Date.now() - 24 * 60 * 60 * 1000); // past 24 hours
 
-    // Fetch interest over time
+    // Fetch trends for each keyword
     const results = await Promise.all(
       keywords.map((kw) =>
-        googleTrends.interestOverTime({
-          keyword: kw,
-          startTime,
-          endTime,
-          geo: '', // global
-        }).catch(err => {
-          console.error(`Trend fetch failed for ${kw}:`, err.message);
-          return null;
-        })
+        googleTrends
+          .interestOverTime({ keyword: kw, startTime, endTime, geo: '' })
+          .catch((err) => {
+            console.error(`Trend fetch failed for ${kw}:`, err.message);
+            return null;
+          })
       )
     );
 
-    // Parse and normalize
+    // Normalize and merge
     const timelineMap = new Map();
 
     keywords.forEach((keyword, i) => {
       if (!results[i]) return;
+
       let trendData;
       try {
         trendData = JSON.parse(results[i]);
       } catch (err) {
-        console.warn(`Failed to parse result for ${keyword}`, err.message);
+        console.warn(`Failed to parse result for ${keyword}:`, err.message);
         return;
       }
 
@@ -46,12 +52,15 @@ export default async function handler(req, res) {
       });
     });
 
-    const normalized = Array.from(timelineMap.values()).sort((a, b) => new Date(a.date) - new Date(b.date));
-console.log('Scheduled fetch executed at:', new Date().toISOString());
+    const normalized = Array.from(timelineMap.values()).sort(
+      (a, b) => new Date(a.date) - new Date(b.date)
+    );
+
+    console.log('Scheduled fetch executed at:', new Date().toISOString());
 
     res.status(200).json(normalized);
-  } catch (err) {
-    console.error('Error fetching trends:', err.message);
-    res.status(500).json({ error: 'Failed to fetch trends', detail: err.message });
+  } catch (error) {
+    console.error('Error in fetch-trends:', error.message);
+    res.status(500).json({ error: 'Failed to fetch trends' });
   }
 }
