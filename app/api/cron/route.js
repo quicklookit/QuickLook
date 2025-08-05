@@ -1,23 +1,36 @@
+// File: app/api/cron/route.js
+
 import { NextResponse } from 'next/server';
 import googleTrends from 'google-trends-api';
 
 export async function GET() {
-  try {
-    const keywords = ['gold', 'bitcoin', 'nasdaq']; 
-    const endTime = new Date();
-    const startTime = new Date(Date.now() - 24 * 60 * 60 * 1000); 
+  const keywords = [
+    'cosmetics',
+    'lipstick',
+    'male underwear',
+    'PMI index',
+    'interest rates',
+    'mortgage lending',
+    'credit card debt',
+    'job openings',
+    'house prices',
+    'European Central Bank',
+    'Federal Reserve',
+    'Bank for International Settlements',
+    'XRP'
+  ];
 
+  const endTime = new Date();
+  const startTime = new Date(Date.now() - 24 * 60 * 60 * 1000); // last 24 hours
+
+  try {
     const results = await Promise.all(
       keywords.map((kw) =>
-        googleTrends.interestOverTime({
-          keyword: kw,
-          startTime,
-          endTime,
-          geo: '',
-        }).catch(err => {
-          console.error(`Failed to fetch trend for ${kw}:`, err.message);
-          return null;
-        })
+        googleTrends.interestOverTime({ keyword: kw, startTime, endTime })
+          .catch(err => {
+            console.error(`Trend fetch failed for ${kw}:`, err.message);
+            return null;
+          })
       )
     );
 
@@ -25,22 +38,34 @@ export async function GET() {
 
     keywords.forEach((keyword, i) => {
       if (!results[i]) return;
-      const data = JSON.parse(results[i]);
-      const timeline = data?.default?.timelineData || [];
+      let trendData;
+      try {
+        trendData = JSON.parse(results[i]);
+      } catch (err) {
+        console.warn(`Failed to parse result for ${keyword}`, err.message);
+        return;
+      }
 
+      const timeline = trendData?.default?.timelineData || [];
       timeline.forEach(({ time, value }) => {
         const timestamp = new Date(parseInt(time) * 1000).toISOString();
-        if (!timelineMap.has(timestamp)) timelineMap.set(timestamp, { date: timestamp });
+        if (!timelineMap.has(timestamp)) {
+          timelineMap.set(timestamp, { date: timestamp });
+        }
         timelineMap.get(timestamp)[keyword] = value[0];
       });
     });
 
-    const normalized = Array.from(timelineMap.values()).sort((a, b) => new Date(a.date) - new Date(b.date));
+    const normalized = Array.from(timelineMap.values()).sort(
+      (a, b) => new Date(a.date) - new Date(b.date)
+    );
 
-    console.log('Cron executed. Trend data collected.');
-    return NextResponse.json({ success: true, data: normalized });
+    console.log('Cron ran successfully at', new Date().toISOString());
+
+    return NextResponse.json(normalized, { status: 200 });
+
   } catch (error) {
-    console.error('Cron error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    console.error('Error in /api/cron:', error);
+    return NextResponse.json({ error: 'Failed to fetch trends', detail: error.message }, { status: 500 });
   }
 }
