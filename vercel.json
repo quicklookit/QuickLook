@@ -1,4 +1,6 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json"
+}{
   "cron": [
     {
       "path": "/api/fetch-trends",
