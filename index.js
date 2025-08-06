@@ -20,7 +20,7 @@ useEffect(() => {
       const keywords = Object.keys(json[0]).filter(k => k !== 'date');
       const labels = json.map(row => row.date);
 
-      const colors = ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#000000']; // ✅ Move this outside the map
+      const colors = ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#000000']; 
 
       const datasets = keywords.map((keyword, i) => ({
         label: keyword,
@@ -36,8 +36,6 @@ useEffect(() => {
       const avg = keywords.reduce((sum, k) => sum + parseFloat(latest[k] || 0), 0) / keywords.length;
       setAverage(avg);
       setLoading(false); // done loading
-    });
-}, []);
 
       });
   }, []);
