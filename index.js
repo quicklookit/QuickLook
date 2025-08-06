@@ -11,25 +11,34 @@ export default function Home() {
   const [datasets, setDatasets] = useState([]);
   const [average, setAverage] = useState(0);
 
-  useEffect(() => {
-    fetch('https://your-backend-url.com/weekly-data')
-      .then(res => res.json())
-      .then(json => {
-        if (json.length === 0) return;
-        const keywords = Object.keys(json[0]).filter(k => k !== 'date');
-        const labels = json.map(row => row.date);
-        const datasets = keywords.map(keyword => ({
-          label: keyword,
-          data: json.map(row => row[keyword]),
-          fill: false,
-          borderColor: '#' + Math.floor(Math.random()*16777215).toString(16),
-        }));
-        setLabels(labels);
-        setDatasets(datasets);
+useEffect(() => {
+  fetch('/api/fetch-trends')
+    .then(res => res.json())
+    .then(json => {
+      if (json.length === 0) return;
 
-        const latest = json[json.length - 1];
-        const avg = keywords.reduce((sum, k) => sum + parseFloat(latest[k] || 0), 0) / keywords.length;
-        setAverage(avg);
+      const keywords = Object.keys(json[0]).filter(k => k !== 'date');
+      const labels = json.map(row => row.date);
+
+      const colors = ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#000000']; // ✅ Move this outside the map
+
+      const datasets = keywords.map((keyword, i) => ({
+        label: keyword,
+        data: json.map(row => row[keyword]),
+        fill: false,
+        borderColor: colors[i % colors.length],
+      }));
+
+      setLabels(labels);
+      setDatasets(datasets);
+
+      const latest = json[json.length - 1];
+      const avg = keywords.reduce((sum, k) => sum + parseFloat(latest[k] || 0), 0) / keywords.length;
+      setAverage(avg);
+      setLoading(false); // done loading
+    });
+}, []);
+
       });
   }, []);
 
