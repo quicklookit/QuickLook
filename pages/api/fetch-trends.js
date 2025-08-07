@@ -17,7 +17,5 @@ export default async function handler(req, res) {
     'Bank for International Settlements',
     'XRP'
   ];
-
-  // Fetch & normalize logic here...
-  res.status(200).json({ success: true }); // placeholder
+  res.status(200).json({ success: true });
 }
