@@ -9,42 +9,78 @@ export default function Home() {
   const [labels, setLabels] = useState([]);
   const [datasets, setDatasets] = useState([]);
   const [average, setAverage] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // define loading
 
   useEffect(() => {
     fetch('/api/cron')
       .then(res => res.json())
       .then(json => {
-        if (json.length === 0) return;
+        if (!Array.isArray(json) || json.length === 0) {
+          setLoading(false);
+          return;
+        }
 
-        const keywords = Object.keys(json[0]).filter(k => k !== 'date');
-        const labels = json.map(row => row.date);
-        const colors = ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#000000'];
+        // 1) Build the union of all series keys across ALL rows
+        const keySet = new Set();
+        json.forEach(row => {
+          Object.keys(row).forEach(k => {
+            if (k !== 'date') keySet.add(k);
+          });
+        });
+        const keywords = Array.from(keySet);
 
-        const datasets = keywords.map((keyword, i) => ({
+        // 2) Labels from dates (assumes ISO strings from the API)
+        const lbls = json.map(row => row.date);
+
+        // Colorblind-friendly palette (Okabe–Ito)
+        const colors = [
+          '#0072B2', // blue
+          '#D55E00', // vermillion
+          '#009E73', // green
+          '#CC79A7', // purple/pink
+          '#000000', // black
+          '#F0E442', // yellow
+          '#56B4E9', // sky blue
+          '#E69F00'  // orange
+        ];
+
+        // 3) Build datasets for all discovered series
+        const dsets = keywords.map((keyword, i) => ({
           label: keyword,
-          data: json.map(row => row[keyword]),
+          data: json.map(row => (row[keyword] ?? null)),
           fill: false,
-          borderColor: colors[i % colors.length]
+          borderColor: colors[i % colors.length],
         }));
 
-        setLabels(labels);
-        setDatasets(datasets);
+        // 4) Compute thermometer average from the last row (only over keys that exist)
+        const latest = json[json.length - 1] || {};
+        const values = keywords
+          .map(k => Number(latest[k]))
+          .filter(v => Number.isFinite(v));
+        const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
 
-        const latest = json[json.length - 1];
-        const avg = keywords.reduce((sum, k) => sum + parseFloat(latest[k] || 0), 0) / keywords.length;
+        setLabels(lbls);
+        setDatasets(dsets);
         setAverage(avg);
         setLoading(false);
-      });
+      })
+      .catch(() => setLoading(false));
   }, []);
 
   return (
     <main className="p-8 font-sans">
       <h1 className="text-2xl font-bold mb-4">📈 Quick Look Trends</h1>
+
       <Thermometer value={average} />
+
       <div className="bg-white p-4 rounded shadow mb-4">
-        <Line data={{ labels, datasets }} />
+        {loading ? (
+          <div className="text-sm text-gray-600">Loading…</div>
+        ) : (
+          <Line data={{ labels, datasets }} />
+        )}
       </div>
+
       <CorrelationHeatmap />
       <SubscribeForm />
     </main>
