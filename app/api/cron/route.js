@@ -22,7 +22,8 @@ export async function GET() {
   ];
 
   const endTime = new Date();
-  const startTime = new Date(Date.now() - 24 * 60 * 60 * 1000); // Past 24 hours
+const startTime = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // last 30 days
+
 
   const results = await Promise.all(
     keywords.map((kw) =>
