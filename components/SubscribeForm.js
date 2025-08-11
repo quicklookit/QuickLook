@@ -6,7 +6,7 @@ export default function SubscribeForm() {
 
   const handleSubscribe = async (e) => {
     e.preventDefault();
-    const res = await fetch('https://your-backend-url.com/subscribe', {
+    const res = await fetch('https://quick-look-4vs6-git-main-teros-projects-abc29d1c.vercel.appe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email })
