@@ -12,7 +12,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/fetch-trends')
+    fetch('/api/cron')
       .then(res => res.json())
       .then(json => {
         if (json.length === 0) return;
