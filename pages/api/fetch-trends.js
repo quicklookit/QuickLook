@@ -4,7 +4,19 @@ import googleTrends from 'google-trends-api';
 
 export default async function handler(req, res) {
   try {
-    const keywords = ['gold', 'bitcoin', 'nasdaq'];
+    const keywords = ['gold', 'bitcoin', 'nasdaq', 'xrp','cosmetics',
+      'lipstick',
+      'male underwear',
+      'PMI index',
+      'interest rates',
+      'mortgage lending',
+      'credit card debt',
+      'job openings',
+      'house prices',
+      'European Central Bank',
+      'Federal Reserve',
+      'Bank for International Settlements',
+      'XRP', ];
     const endTime = new Date();
     const startTime = new Date(Date.now() - 24 * 60 * 60 * 1000); // past 24 hours
 
