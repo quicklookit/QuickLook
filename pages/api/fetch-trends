@@ -1,1 +1,63 @@
+// pages/api/fetch-trends.js
+import googleTrends from 'google-trends-api';
 
+export default async function handler(req, res) {
+  try {
+    const keywords = [
+      'cosmetics',
+      'lipstick',
+      'male underwear',
+      'PMI index',
+      'interest rates',
+      'mortgage lending',
+      'credit card debt',
+      'job openings',
+      'house prices',
+      'European Central Bank',
+      'Federal Reserve',
+      'Bank for International Settlements',
+      'XRP',
+      'gold',
+      'bitcoin',
+      'nasdaq'
+    ];
+
+    // Use a longer window so sparse series actually appear
+    const endTime = new Date();
+    const startTime = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // last 30 days
+
+    const results = await Promise.all(
+      keywords.map((kw) =>
+        googleTrends
+          .interestOverTime({ keyword: kw, startTime, endTime, geo: '' })
+          .then((json) => ({ kw, data: JSON.parse(json) }))
+          .catch((err) => {
+            console.error(`Trend fetch failed for ${kw}:`, err?.message || err);
+            return null;
+          })
+      )
+    );
+
+    // Union timestamps across all series
+    const timelineMap = new Map(); // ts -> { date, ...series }
+    results.forEach((item) => {
+      if (!item) return;
+      const { kw, data } = item;
+      const pts = data?.default?.timelineData || [];
+      pts.forEach(({ time, value }) => {
+        const ts = new Date(Number(time) * 1000).toISOString();
+        if (!timelineMap.has(ts)) timelineMap.set(ts, { date: ts });
+        timelineMap.get(ts)[kw] = value?.[0] ?? null;
+      });
+    });
+
+    const normalized = Array.from(timelineMap.values()).sort(
+      (a, b) => new Date(a.date) - new Date(b.date)
+    );
+
+    res.status(200).json(normalized);
+  } catch (err) {
+    console.error('Error in /api/fetch-trends:', err?.message || err);
+    res.status(500).json({ error: 'Failed to fetch trends' });
+  }
+}
