@@ -12,7 +12,7 @@ export default function Home() {
   const [average, setAverage] = useState(0);
 
   useEffect(() => {
-    fetch('https://your-backend-url.com/weekly-data')
+    fetch('https://quick-look-git-main-teros-projects-abc29d1c.vercel.app')
       .then(res => res.json())
       .then(json => {
         if (json.length === 0) return;
