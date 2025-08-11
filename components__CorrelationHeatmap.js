@@ -5,7 +5,7 @@ export default function CorrelationHeatmap() {
   const [labels, setLabels] = useState([]);
 
   useEffect(() => {
-    fetch('https://your-backend-url.com/correlation')
+    fetch('/correlation')
       .then(res => res.json())
       .then(json => {
         setMatrix(json);
