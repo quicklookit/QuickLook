@@ -1,6 +1,5 @@
 import googleTrends from 'google-trends-api';
 
-// Same keyword list and window as fetch-trends to keep results aligned
 const KEYWORDS = [
   'cosmetics','lipstick','male underwear','PMI index','interest rates',
   'mortgage lending','credit card debt','job openings','house prices',
