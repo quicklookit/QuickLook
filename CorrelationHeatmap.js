@@ -5,7 +5,7 @@ export default function CorrelationHeatmap() {
   const [labels, setLabels] = useState([]);
 
   useEffect(() => {
-    fetch('https://your-backend-url.com/correlation')
+    fetch('https://quick-look-4vs6-nb6hw4akg-teros-projects-abc29d1c.vercel.app/correlation')
       .then(res => res.json())
       .then(json => {
         setMatrix(json);
