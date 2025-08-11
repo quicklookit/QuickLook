@@ -12,7 +12,8 @@ export default function Home() {
   const [average, setAverage] = useState(0);
 
 useEffect(() => {
-  fetch('/api/cron')
+  fetch('/api/fetch-trends')
+')
     .then(res => res.json())
     .then(json => {
       if (json.length === 0) return;
