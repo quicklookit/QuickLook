@@ -9,7 +9,7 @@ export default function Home() {
   const [labels, setLabels] = useState([]);
   const [datasets, setDatasets] = useState([]);
   const [average, setAverage] = useState(0);
-  const [loading, setLoading] = useState(true); // define loading
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch('/api/cron')
@@ -20,7 +20,6 @@ export default function Home() {
           return;
         }
 
-        // 1) Build the union of all series keys across ALL rows
         const keySet = new Set();
         json.forEach(row => {
           Object.keys(row).forEach(k => {
@@ -29,10 +28,10 @@ export default function Home() {
         });
         const keywords = Array.from(keySet);
 
-        // 2) Labels from dates (assumes ISO strings from the API)
+  
         const lbls = json.map(row => row.date);
 
-        // Colorblind-friendly palette (Okabe–Ito)
+    
         const colors = [
           '#0072B2', // blue
           '#D55E00', // vermillion
@@ -44,7 +43,7 @@ export default function Home() {
           '#E69F00'  // orange
         ];
 
-        // 3) Build datasets for all discovered series
+   
         const dsets = keywords.map((keyword, i) => ({
           label: keyword,
           data: json.map(row => (row[keyword] ?? null)),
@@ -52,7 +51,7 @@ export default function Home() {
           borderColor: colors[i % colors.length],
         }));
 
-        // 4) Compute thermometer average from the last row (only over keys that exist)
+     
         const latest = json[json.length - 1] || {};
         const values = keywords
           .map(k => Number(latest[k]))
