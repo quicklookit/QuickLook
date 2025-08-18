@@ -1,67 +1,84 @@
 // pages/api/fetch-trends.js
 import googleTrends from 'google-trends-api';
+import pLimit from 'p-limit'; // npm install p-limit
 
 export default async function handler(req, res) {
+  // Optionally allow client to override timeframe via query
+  const days = parseInt(req.query.days, 10) || 30;
+  const endTime = new Date();
+  const startTime = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const keywords = [
+    'cosmetics',
+    'lipstick',
+    'male underwear',
+    'PMI index',
+    'interest rates',
+    'mortgage lending',
+    'credit card debt',
+    'job openings',
+    'house prices',
+    'European Central Bank',
+    'Federal Reserve',
+    'Bank for International Settlements',
+    'XRP',
+    'gold',
+    'bitcoin',
+    'nasdaq'
+  ];
+
+  // Limit concurrency to 5 requests at a time to avoid rate-limits
+  const limit = pLimit(5);
+
   try {
-    const keywords = [
-      'cosmetics',
-      'lipstick',
-      'male underwear',
-      'PMI index',
-      'interest rates',
-      'mortgage lending',
-      'credit card debt',
-      'job openings',
-      'house prices',
-      'European Central Bank',
-      'Federal Reserve',
-      'Bank for International Settlements',
-      'XRP',
-      'gold',
-      'bitcoin',
-      'nasdaq'
-    ];
-
-    const endTime = new Date();
-    const startTime = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // last 30 days
-
     const results = await Promise.all(
-      keywords.map(async (kw) => {
-        try {
-          const json = await googleTrends.interestOverTime({
-            keyword: kw,
-            startTime,
-            endTime,
-            geo: ''
-          });
-          const data = JSON.parse(json);
-          return { kw, data };
-        } catch (err) {
-          console.error(`Trend fetch failed for ${kw}:`, err?.message || err);
-          return null;
-        }
-      })
+      keywords.map((kw) =>
+        limit(async () => {
+          try {
+            const json = await googleTrends.interestOverTime({
+              keyword: kw,
+              startTime,
+              endTime,
+              geo: '',          // empty = global; or use 'US', 'NL', etc.
+              hl: 'en-US',      // interface language
+              timezone: 0       // UTC; adjust if needed
+            });
+            const { default: { timelineData } = {} } = JSON.parse(json);
+            return { kw, timelineData };
+          } catch (err) {
+            console.error(`🔴 Trend fetch failed for [${kw}]:`, err.message);
+            return null;
+          }
+        })
+      )
     );
 
-    const timelineMap = new Map(); // ts -> { date, ...series }
+    // Build a map keyed by ISO timestamp
+    const timelineMap = new Map();
+    results.forEach(item => {
+      if (!item?.timelineData?.length) return;
 
-    results.forEach((item) => {
-      if (!item || !item.data?.default?.timelineData?.length) return;
-      const { kw, data } = item;
-      data.default.timelineData.forEach(({ time, value }) => {
-        const ts = new Date(time).toISOString(); // Correct timestamp parsing
-        if (!timelineMap.has(ts)) timelineMap.set(ts, { date: ts });
-        timelineMap.get(ts)[kw] = value?.[0] ?? null;
+      item.timelineData.forEach(({ time, value }) => {
+        // Convert seconds to milliseconds
+        const date = new Date(parseInt(time, 10) * 1000).toISOString();
+        if (!timelineMap.has(date)) {
+          timelineMap.set(date, { date });
+        }
+        // value is an array; for one keyword it’s [score]
+        timelineMap.get(date)[item.kw] = value[0] ?? 0;
       });
     });
 
+    // Sort chronologically and return
     const normalized = Array.from(timelineMap.values()).sort(
       (a, b) => new Date(a.date) - new Date(b.date)
     );
 
+    // Cache headers (optional)
+    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
     res.status(200).json(normalized);
   } catch (err) {
-    console.error('Error in /api/fetch-trends:', err?.message || err);
+    console.error('🔴 Error in /api/fetch-trends:', err.message);
     res.status(500).json({ error: 'Failed to fetch trends' });
   }
 }
