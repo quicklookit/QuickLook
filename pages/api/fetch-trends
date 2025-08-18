@@ -22,30 +22,34 @@ export default async function handler(req, res) {
       'nasdaq'
     ];
 
-    // Use a longer window so sparse series actually appear
     const endTime = new Date();
     const startTime = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // last 30 days
 
     const results = await Promise.all(
-      keywords.map((kw) =>
-        googleTrends
-          .interestOverTime({ keyword: kw, startTime, endTime, geo: '' })
-          .then((json) => ({ kw, data: JSON.parse(json) }))
-          .catch((err) => {
-            console.error(`Trend fetch failed for ${kw}:`, err?.message || err);
-            return null;
-          })
-      )
+      keywords.map(async (kw) => {
+        try {
+          const json = await googleTrends.interestOverTime({
+            keyword: kw,
+            startTime,
+            endTime,
+            geo: ''
+          });
+          const data = JSON.parse(json);
+          return { kw, data };
+        } catch (err) {
+          console.error(`Trend fetch failed for ${kw}:`, err?.message || err);
+          return null;
+        }
+      })
     );
 
-    // Union timestamps across all series
     const timelineMap = new Map(); // ts -> { date, ...series }
+
     results.forEach((item) => {
-      if (!item) return;
+      if (!item || !item.data?.default?.timelineData?.length) return;
       const { kw, data } = item;
-      const pts = data?.default?.timelineData || [];
-      pts.forEach(({ time, value }) => {
-        const ts = new Date(Number(time) * 1000).toISOString();
+      data.default.timelineData.forEach(({ time, value }) => {
+        const ts = new Date(time).toISOString(); // Correct timestamp parsing
         if (!timelineMap.has(ts)) timelineMap.set(ts, { date: ts });
         timelineMap.get(ts)[kw] = value?.[0] ?? null;
       });
