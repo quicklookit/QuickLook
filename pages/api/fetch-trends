@@ -2,20 +2,16 @@
 import googleTrends from 'google-trends-api';
 import pLimit from 'p-limit';
 
-// Fetch keyword across 90-day segments and stitch results together
-async function fetchKeywordOverSegments(kw, startTime, endTime) {
-  const segmentDays = 90;
+// Fetch keyword in smaller chunks (e.g. 30 days) and stitch results
+async function fetchKeywordOverSegments(kw, startTime, endTime, segmentDays = 30) {
   const segments = [];
   for (let t = new Date(startTime); t < endTime; ) {
     const segStart = new Date(t);
     const segEnd = new Date(
-      Math.min(
-        segStart.getTime() + segmentDays * 24 * 60 * 60 * 1000,
-        endTime.getTime()
-      )
+      Math.min(segStart.getTime() + segmentDays * 24 * 60 * 60 * 1000, endTime.getTime())
     );
     segments.push({ segStart, segEnd });
-    // advance one day beyond segEnd to avoid overlap
+    // move forward one day so segments overlap slightly
     t = new Date(segEnd.getTime() + 24 * 60 * 60 * 1000);
   }
 
@@ -28,18 +24,18 @@ async function fetchKeywordOverSegments(kw, startTime, endTime) {
         geo: '',
         hl: 'en-US',
         timezone: 0,
-        granularTimeResolution: true,
+        granularTimeResolution: true, // finer-grained results
       });
       const parsed = JSON.parse(json);
       return parsed?.default?.timelineData ?? [];
     })
   );
 
-  // Flatten & dedup by timestamp
+  // Flatten & de-duplicate by timestamp
   const byTs = new Map();
   for (const arr of parts) {
     for (const e of arr) {
-      byTs.set(e.time, e); // keep last value for that timestamp
+      byTs.set(e.time, e);
     }
   }
   return [...byTs.values()].sort((a, b) => Number(a.time) - Number(b.time));
@@ -72,18 +68,14 @@ export default async function handler(req, res) {
     'nasdaq',
   ];
 
-  const limit = pLimit(5);
+  const limit = pLimit(3); // lower concurrency just in case
 
   try {
     const results = await Promise.all(
       keywords.map((kw) =>
         limit(async () => {
           try {
-            const timelineData = await fetchKeywordOverSegments(
-              kw,
-              startTime,
-              endTime
-            );
+            const timelineData = await fetchKeywordOverSegments(kw, startTime, endTime, 30);
             console.log(`ℹ️ ${kw}: ${timelineData.length} points`);
             return { kw, timelineData };
           } catch (err) {
@@ -94,7 +86,7 @@ export default async function handler(req, res) {
       )
     );
 
-    // Merge by day
+    // Merge all keywords by day
     const byDay = new Map();
     for (const item of results) {
       for (const entry of item.timelineData) {
@@ -111,14 +103,11 @@ export default async function handler(req, res) {
       (a, b) => new Date(a.date) - new Date(b.date)
     );
 
-    // No CDN caching while testing
     res.setHeader('Cache-Control', 'no-store');
     res.status(200).json(normalized);
   } catch (err) {
     console.error('🔴 Error in /api/fetch-trends:', err);
     res.setHeader('Cache-Control', 'no-store');
-    res
-      .status(500)
-      .json({ error: 'Failed to fetch trends', detail: String(err) });
+    res.status(500).json({ error: 'Failed to fetch trends', detail: String(err) });
   }
 }
