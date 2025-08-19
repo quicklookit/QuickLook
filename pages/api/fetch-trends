@@ -2,52 +2,89 @@
 import googleTrends from 'google-trends-api';
 import pLimit from 'p-limit';
 
+// Fetch keyword across 90-day segments and stitch results together
+async function fetchKeywordOverSegments(kw, startTime, endTime) {
+  const segmentDays = 90;
+  const segments = [];
+  for (let t = new Date(startTime); t < endTime; ) {
+    const segStart = new Date(t);
+    const segEnd = new Date(
+      Math.min(
+        segStart.getTime() + segmentDays * 24 * 60 * 60 * 1000,
+        endTime.getTime()
+      )
+    );
+    segments.push({ segStart, segEnd });
+    // advance one day beyond segEnd to avoid overlap
+    t = new Date(segEnd.getTime() + 24 * 60 * 60 * 1000);
+  }
+
+  const parts = await Promise.all(
+    segments.map(async ({ segStart, segEnd }) => {
+      const json = await googleTrends.interestOverTime({
+        keyword: kw,
+        startTime: segStart,
+        endTime: segEnd,
+        geo: '',
+        hl: 'en-US',
+        timezone: 0,
+        granularTimeResolution: true,
+      });
+      const parsed = JSON.parse(json);
+      return parsed?.default?.timelineData ?? [];
+    })
+  );
+
+  // Flatten & dedup by timestamp
+  const byTs = new Map();
+  for (const arr of parts) {
+    for (const e of arr) {
+      byTs.set(e.time, e); // keep last value for that timestamp
+    }
+  }
+  return [...byTs.values()].sort((a, b) => Number(a.time) - Number(b.time));
+}
+
 export default async function handler(req, res) {
-  // 1) Window: allow override, default to 180 days to ensure enough points
   const days = Number.isFinite(parseInt(req.query.days, 10))
     ? parseInt(req.query.days, 10)
     : 180;
 
-  // Helper to run one pass for a given window
-  async function fetchWindow(windowDays) {
-    const endTime = new Date();
-    const startTime = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  const endTime = new Date();
+  const startTime = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    const keywords = [
-      'cosmetics',
-      'lipstick',
-      'male underwear',
-      'PMI index',
-      'interest rates',
-      'mortgage lending',
-      'credit card debt',
-      'job openings',
-      'house prices',
-      'European Central Bank',
-      'Federal Reserve',
-      'Bank for International Settlements',
-      'XRP',
-      'gold',
-      'bitcoin',
-      'nasdaq',
-    ];
+  const keywords = [
+    'cosmetics',
+    'lipstick',
+    'male underwear',
+    'PMI index',
+    'interest rates',
+    'mortgage lending',
+    'credit card debt',
+    'job openings',
+    'house prices',
+    'European Central Bank',
+    'Federal Reserve',
+    'Bank for International Settlements',
+    'XRP',
+    'gold',
+    'bitcoin',
+    'nasdaq',
+  ];
 
-    const limit = pLimit(5);
+  const limit = pLimit(5);
+
+  try {
     const results = await Promise.all(
       keywords.map((kw) =>
         limit(async () => {
           try {
-            const json = await googleTrends.interestOverTime({
-              keyword: kw,
+            const timelineData = await fetchKeywordOverSegments(
+              kw,
               startTime,
-              endTime,
-              geo: '',       // global
-              hl: 'en-US',
-              timezone: 0,
-              // granularTimeResolution: false, // uncomment to discourage hourly bins
-            });
-            const parsed = JSON.parse(json);
-            const timelineData = parsed?.default?.timelineData ?? [];
+              endTime
+            );
+            console.log(`ℹ️ ${kw}: ${timelineData.length} points`);
             return { kw, timelineData };
           } catch (err) {
             console.error(`🔴 Trend fetch failed for [${kw}]:`, err.message);
@@ -57,21 +94,13 @@ export default async function handler(req, res) {
       )
     );
 
-    // Log sizes so you can see what's happening (shows in Vercel function logs)
-    for (const r of results) {
-      console.log(`ℹ️ ${r.kw}: ${r.timelineData.length} points for last ${windowDays}d`);
-    }
-
-    // Merge by ISO day key (YYYY-MM-DD) to normalize granularity
+    // Merge by day
     const byDay = new Map();
     for (const item of results) {
       for (const entry of item.timelineData) {
-        // Google returns unix seconds in entry.time
         const d = new Date(Number(entry.time) * 1000);
-        // normalize to date (strip time) so hourly/daily data merges cleanly
         const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
         const existing = byDay.get(key) || { date: new Date(key).toISOString() };
-        // value is an array like [score]
         const v = Array.isArray(entry.value) ? entry.value[0] : entry.value;
         existing[item.kw] = Number.isFinite(v) ? v : 0;
         byDay.set(key, existing);
@@ -82,25 +111,14 @@ export default async function handler(req, res) {
       (a, b) => new Date(a.date) - new Date(b.date)
     );
 
-    return normalized;
-  }
-
-  try {
-    // 2) First attempt with requested/default days
-    let rows = await fetchWindow(days);
-
-    // 3) Fallback: if too few points, expand window (e.g., to 365 days)
-    if (rows.length < 10) {
-      console.warn(`⚠️ Only ${rows.length} points for ${days}d — retrying with 365d`);
-      rows = await fetchWindow(365);
-    }
-
-    // 4) No CDN caching while we sort this out
+    // No CDN caching while testing
     res.setHeader('Cache-Control', 'no-store');
-    res.status(200).json(rows);
+    res.status(200).json(normalized);
   } catch (err) {
     console.error('🔴 Error in /api/fetch-trends:', err);
     res.setHeader('Cache-Control', 'no-store');
-    res.status(500).json({ error: 'Failed to fetch trends', detail: String(err) });
+    res
+      .status(500)
+      .json({ error: 'Failed to fetch trends', detail: String(err) });
   }
 }
