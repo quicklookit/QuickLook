@@ -1,36 +1,38 @@
 // pages/api/fetch-trends.js
 import googleTrends from 'google-trends-api';
-import pLimit from 'p-limit'; // npm install p-limit
+import pLimit from 'p-limit';
 
 export default async function handler(req, res) {
-  // Optionally allow client to override timeframe via query
-  const days = parseInt(req.query.days, 10) || 30;
-  const endTime = new Date();
-  const startTime = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  // 1) Window: allow override, default to 180 days to ensure enough points
+  const days = Number.isFinite(parseInt(req.query.days, 10))
+    ? parseInt(req.query.days, 10)
+    : 180;
 
-  const keywords = [
-    'cosmetics',
-    'lipstick',
-    'male underwear',
-    'PMI index',
-    'interest rates',
-    'mortgage lending',
-    'credit card debt',
-    'job openings',
-    'house prices',
-    'European Central Bank',
-    'Federal Reserve',
-    'Bank for International Settlements',
-    'XRP',
-    'gold',
-    'bitcoin',
-    'nasdaq'
-  ];
+  // Helper to run one pass for a given window
+  async function fetchWindow(windowDays) {
+    const endTime = new Date();
+    const startTime = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
 
-  // Limit concurrency to 5 requests at a time to avoid rate-limits
-  const limit = pLimit(5);
+    const keywords = [
+      'cosmetics',
+      'lipstick',
+      'male underwear',
+      'PMI index',
+      'interest rates',
+      'mortgage lending',
+      'credit card debt',
+      'job openings',
+      'house prices',
+      'European Central Bank',
+      'Federal Reserve',
+      'Bank for International Settlements',
+      'XRP',
+      'gold',
+      'bitcoin',
+      'nasdaq',
+    ];
 
-  try {
+    const limit = pLimit(5);
     const results = await Promise.all(
       keywords.map((kw) =>
         limit(async () => {
@@ -39,46 +41,66 @@ export default async function handler(req, res) {
               keyword: kw,
               startTime,
               endTime,
-              geo: '',          // empty = global; or use 'US', 'NL', etc.
-              hl: 'en-US',      // interface language
-              timezone: 0       // UTC; adjust if needed
+              geo: '',       // global
+              hl: 'en-US',
+              timezone: 0,
+              // granularTimeResolution: false, // uncomment to discourage hourly bins
             });
-            const { default: { timelineData } = {} } = JSON.parse(json);
+            const parsed = JSON.parse(json);
+            const timelineData = parsed?.default?.timelineData ?? [];
             return { kw, timelineData };
           } catch (err) {
             console.error(`🔴 Trend fetch failed for [${kw}]:`, err.message);
-            return null;
+            return { kw, timelineData: [] };
           }
         })
       )
     );
 
-    // Build a map keyed by ISO timestamp
-    const timelineMap = new Map();
-    results.forEach(item => {
-      if (!item?.timelineData?.length) return;
+    // Log sizes so you can see what's happening (shows in Vercel function logs)
+    for (const r of results) {
+      console.log(`ℹ️ ${r.kw}: ${r.timelineData.length} points for last ${windowDays}d`);
+    }
 
-      item.timelineData.forEach(({ time, value }) => {
-        // Convert seconds to milliseconds
-        const date = new Date(parseInt(time, 10) * 1000).toISOString();
-        if (!timelineMap.has(date)) {
-          timelineMap.set(date, { date });
-        }
-        // value is an array; for one keyword it’s [score]
-        timelineMap.get(date)[item.kw] = value[0] ?? 0;
-      });
-    });
+    // Merge by ISO day key (YYYY-MM-DD) to normalize granularity
+    const byDay = new Map();
+    for (const item of results) {
+      for (const entry of item.timelineData) {
+        // Google returns unix seconds in entry.time
+        const d = new Date(Number(entry.time) * 1000);
+        // normalize to date (strip time) so hourly/daily data merges cleanly
+        const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
+        const existing = byDay.get(key) || { date: new Date(key).toISOString() };
+        // value is an array like [score]
+        const v = Array.isArray(entry.value) ? entry.value[0] : entry.value;
+        existing[item.kw] = Number.isFinite(v) ? v : 0;
+        byDay.set(key, existing);
+      }
+    }
 
-    // Sort chronologically and return
-    const normalized = Array.from(timelineMap.values()).sort(
+    const normalized = [...byDay.values()].sort(
       (a, b) => new Date(a.date) - new Date(b.date)
     );
 
-    // Cache headers (optional)
-    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
-    res.status(200).json(normalized);
+    return normalized;
+  }
+
+  try {
+    // 2) First attempt with requested/default days
+    let rows = await fetchWindow(days);
+
+    // 3) Fallback: if too few points, expand window (e.g., to 365 days)
+    if (rows.length < 10) {
+      console.warn(`⚠️ Only ${rows.length} points for ${days}d — retrying with 365d`);
+      rows = await fetchWindow(365);
+    }
+
+    // 4) No CDN caching while we sort this out
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).json(rows);
   } catch (err) {
-    console.error('🔴 Error in /api/fetch-trends:', err.message);
-    res.status(500).json({ error: 'Failed to fetch trends' });
+    console.error('🔴 Error in /api/fetch-trends:', err);
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(500).json({ error: 'Failed to fetch trends', detail: String(err) });
   }
 }
