@@ -10,65 +10,75 @@ export default function Home() {
   const [datasets, setDatasets] = useState([]);
   const [average, setAverage] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [useRaw, setUseRaw] = useState(false); // 👈 toggle state
+  const [allData, setAllData] = useState([]);
 
   useEffect(() => {
-    fetch('/api/fetch-trends')
+    fetch('/api/fetch-trends?days=180', { cache: 'no-store' })
       .then(res => res.json())
       .then(json => {
-        if (!Array.isArray(json) || json.length === 0) {
-          setLoading(false);
-          return;
-        }
-
-        const keySet = new Set();
-        json.forEach(row => {
-          Object.keys(row).forEach(k => {
-            if (k !== 'date') keySet.add(k);
-          });
-        });
-        const keywords = Array.from(keySet);
-
-  
-        const lbls = json.map(row => row.date);
-
-    
-        const colors = [
-          '#0072B2', // blue
-          '#D55E00', // vermillion
-          '#009E73', // green
-          '#CC79A7', // purple/pink
-          '#000000', // black
-          '#F0E442', // yellow
-          '#56B4E9', // sky blue
-          '#E69F00'  // orange
-        ];
-
-   
-        const dsets = keywords.map((keyword, i) => ({
-          label: keyword,
-          data: json.map(row => (row[keyword] ?? null)),
-          fill: false,
-          borderColor: colors[i % colors.length],
-        }));
-
-     
-        const latest = json[json.length - 1] || {};
-        const values = keywords
-          .map(k => Number(latest[k]))
-          .filter(v => Number.isFinite(v));
-        const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-
-        setLabels(lbls);
-        setDatasets(dsets);
-        setAverage(avg);
-        setLoading(false);
+        setAllData(json); // save full response
+        buildDatasets(json, useRaw);
       })
       .catch(() => setLoading(false));
   }, []);
 
+  // rebuild datasets when toggle changes
+  useEffect(() => {
+    if (allData.length) buildDatasets(allData, useRaw);
+  }, [useRaw]);
+
+  function buildDatasets(json, rawMode) {
+    if (!Array.isArray(json) || json.length === 0) {
+      setLoading(false);
+      return;
+    }
+
+    const lbls = json.map(row => row.date);
+
+    // detect keys based on mode
+    const keys = Object.keys(json[0])
+      .filter(k => k !== 'date' && (rawMode ? k.endsWith('_raw') : !k.endsWith('_raw')));
+
+    // color palette
+    const colors = [
+      '#0072B2', '#D55E00', '#009E73', '#CC79A7',
+      '#000000', '#F0E442', '#56B4E9', '#E69F00'
+    ];
+
+    const dsets = keys.map((key, i) => ({
+      label: key.replace('_raw', ''), // drop "_raw" suffix for labels
+      data: lbls.map(d => {
+        const row = json.find(r => r.date === d);
+        return row && typeof row[key] === 'number' ? row[key] : null;
+      }),
+      fill: false,
+      borderColor: colors[i % colors.length],
+      spanGaps: false,
+    }));
+
+    // compute average of last row
+    const latest = json[json.length - 1] || {};
+    const values = keys.map(k => Number(latest[k])).filter(v => Number.isFinite(v));
+    const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+
+    setLabels(lbls);
+    setDatasets(dsets);
+    setAverage(avg);
+    setLoading(false);
+  }
+
   return (
     <main className="p-8 font-sans">
-      <h1 className="text-2xl font-bold mb-4">📈 Quick Look Trends</h1>
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold">📈 Quick Look Trends</h1>
+        <button
+          onClick={() => setUseRaw(!useRaw)}
+          className="bg-blue-600 text-white px-3 py-1 rounded text-sm"
+        >
+          {useRaw ? 'Switch to Normalized' : 'Switch to Raw'}
+        </button>
+      </div>
 
       <Thermometer value={average} />
 
@@ -80,7 +90,7 @@ export default function Home() {
         )}
       </div>
 
-      <CorrelationHeatmap />
+      <CorrelationHeatmap useRaw={useRaw} />
       <SubscribeForm />
     </main>
   );
