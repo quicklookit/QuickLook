@@ -8,7 +8,10 @@ async function fetchKeywordOverSegments(kw, startTime, endTime, segmentDays = 30
   for (let t = new Date(startTime); t < endTime; ) {
     const segStart = new Date(t);
     const segEnd = new Date(
-      Math.min(segStart.getTime() + segmentDays * 24 * 60 * 60 * 1000, endTime.getTime())
+      Math.min(
+        segStart.getTime() + segmentDays * 24 * 60 * 60 * 1000,
+        endTime.getTime()
+      )
     );
     segments.push({ segStart, segEnd });
     // move forward one day so segments overlap slightly
@@ -41,6 +44,31 @@ async function fetchKeywordOverSegments(kw, startTime, endTime, segmentDays = 30
   return [...byTs.values()].sort((a, b) => Number(a.time) - Number(b.time));
 }
 
+// Gap filler to ensure every day between start and end exists
+function fillMissingDays(rows, keywords) {
+  if (!rows.length) return [];
+
+  const start = new Date(rows[0].date);
+  const end = new Date(rows[rows.length - 1].date);
+
+  const byDay = new Map(rows.map((r) => [r.date.slice(0, 10), r]));
+  const filled = [];
+
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const key = d.toISOString().slice(0, 10);
+    const existing = byDay.get(key);
+    if (existing) {
+      filled.push(existing);
+    } else {
+      // Create blank row with nulls
+      const blank = { date: new Date(key).toISOString() };
+      for (const kw of keywords) blank[kw] = null;
+      filled.push(blank);
+    }
+  }
+  return filled;
+}
+
 export default async function handler(req, res) {
   const days = Number.isFinite(parseInt(req.query.days, 10))
     ? parseInt(req.query.days, 10)
@@ -68,14 +96,19 @@ export default async function handler(req, res) {
     'nasdaq',
   ];
 
-  const limit = pLimit(3); // lower concurrency just in case
+  const limit = pLimit(3);
 
   try {
     const results = await Promise.all(
       keywords.map((kw) =>
         limit(async () => {
           try {
-            const timelineData = await fetchKeywordOverSegments(kw, startTime, endTime, 30);
+            const timelineData = await fetchKeywordOverSegments(
+              kw,
+              startTime,
+              endTime,
+              30
+            );
             console.log(`ℹ️ ${kw}: ${timelineData.length} points`);
             return { kw, timelineData };
           } catch (err) {
@@ -99,15 +132,20 @@ export default async function handler(req, res) {
       }
     }
 
-    const normalized = [...byDay.values()].sort(
+    let normalized = [...byDay.values()].sort(
       (a, b) => new Date(a.date) - new Date(b.date)
     );
+
+    // Fill in missing days with nulls
+    normalized = fillMissingDays(normalized, keywords);
 
     res.setHeader('Cache-Control', 'no-store');
     res.status(200).json(normalized);
   } catch (err) {
     console.error('🔴 Error in /api/fetch-trends:', err);
     res.setHeader('Cache-Control', 'no-store');
-    res.status(500).json({ error: 'Failed to fetch trends', detail: String(err) });
+    res
+      .status(500)
+      .json({ error: 'Failed to fetch trends', detail: String(err) });
   }
 }
