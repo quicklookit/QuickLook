@@ -1,0 +1,21 @@
+name: Trigger Vercel Deploy
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}   # lets you run it manually if needed
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel Deploy Hook
+        env:
+          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+        run: |
+          set -e
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$VERCEL_DEPLOY_HOOK_URL")
+          echo "Vercel responded with: $code"
+          if [ "$code" -ge 400 ]; then
+            echo "Deploy hook failed"
+            exit 1
+          fi
