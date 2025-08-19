@@ -1,56 +1,92 @@
-import React, { useEffect, useState } from 'react';
+'use client'; // if using App Router
+import { useEffect, useState } from 'react';
+import { HeatMapGrid } from 'react-grid-heatmap'; // or whatever library you use
+
+// Utility: compute Pearson correlation, skipping nulls
+function pearsonCorrelation(xArr, yArr) {
+  const x = [];
+  const y = [];
+  for (let i = 0; i < xArr.length; i++) {
+    if (xArr[i] != null && yArr[i] != null) {
+      x.push(xArr[i]);
+      y.push(yArr[i]);
+    }
+  }
+  const n = x.length;
+  if (n < 2) return null;
+
+  const meanX = x.reduce((a, b) => a + b, 0) / n;
+  const meanY = y.reduce((a, b) => a + b, 0) / n;
+
+  let num = 0;
+  let denX = 0;
+  let denY = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = x[i] - meanX;
+    const dy = y[i] - meanY;
+    num += dx * dy;
+    denX += dx * dx;
+    denY += dy * dy;
+  }
+  const den = Math.sqrt(denX * denY);
+  return den === 0 ? null : num / den;
+}
 
 export default function CorrelationHeatmap() {
-  const [matrix, setMatrix] = useState({});
+  const [data, setData] = useState([]);
   const [labels, setLabels] = useState([]);
+  const [matrix, setMatrix] = useState([]);
 
   useEffect(() => {
-    fetch('/api/correlation')
+    fetch('/api/fetch-trends?days=180', { cache: 'no-store' })
       .then(res => res.json())
-      .then(json => {
-        setMatrix(json);
-        setLabels(Object.keys(json));
+      .then(rows => {
+        if (!Array.isArray(rows) || rows.length === 0) return;
+
+        // collect all keywords/series
+        const keys = Object.keys(rows[0]).filter(k => k !== 'date');
+        setLabels(keys);
+
+        // build arrays of values per key
+        const series = {};
+        keys.forEach(k => {
+          series[k] = rows.map(r => (r[k] != null ? Number(r[k]) : null));
+        });
+
+        // build correlation matrix
+        const m = keys.map(iKey =>
+          keys.map(jKey => pearsonCorrelation(series[iKey], series[jKey]))
+        );
+
+        setMatrix(m);
       })
-      .catch(() => {
-        setMatrix({});
-        setLabels([]);
-      });
+      .catch(err => console.error('Heatmap fetch error:', err));
   }, []);
 
   return (
-    <div className="mt-8 p-4 bg-white rounded shadow">
-      <h2 className="text-xl font-bold mb-4">🔗 Correlation Heatmap</h2>
-      {labels.length === 0 ? (
-        <div className="text-sm text-gray-600">No correlation data yet.</div>
+    <div className="bg-white p-4 rounded shadow mt-6">
+      <h2 className="text-lg font-semibold mb-4">📊 Correlation Heatmap</h2>
+      {matrix.length > 0 ? (
+        <HeatMapGrid
+          data={matrix}
+          xLabels={labels}
+          yLabels={labels}
+          cellRender={(x, y, value) => (
+            <div className="text-xs font-mono">
+              {value == null ? '—' : value.toFixed(2)}
+            </div>
+          )}
+          cellStyle={(_x, _y, value) => ({
+            background: value == null
+              ? '#f0f0f0'
+              : value > 0
+              ? `rgba(0, 128, 0, ${Math.abs(value)})` // green for positive
+              : `rgba(220, 20, 60, ${Math.abs(value)})`, // red for negative
+            color: '#000',
+          })}
+        />
       ) : (
-        <div className="overflow-x-auto">
-          <table className="table-auto border-collapse">
-            <thead>
-              <tr>
-                <th className="border p-2"></th>
-                {labels.map(label => (
-                  <th key={label} className="border p-2 text-xs">{label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {labels.map(row => (
-                <tr key={row}>
-                  <td className="border p-2 font-bold text-xs">{row}</td>
-                  {labels.map(col => {
-                    const val = matrix[row]?.[col] ?? 0;
-                    const bg = `rgba(0, 128, 255, ${Math.min(1, Math.abs(val))})`;
-                    return (
-                      <td key={col} className="border p-1 text-center text-xs" style={{ backgroundColor: bg }}>
-                        {val.toFixed ? val.toFixed(2) : val}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <p className="text-sm text-gray-600">Loading correlations…</p>
       )}
     </div>
   );
