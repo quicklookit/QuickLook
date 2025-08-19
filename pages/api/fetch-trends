@@ -1,72 +1,76 @@
 // pages/api/fetch-trends.js
 import googleTrends from 'google-trends-api';
 import pLimit from 'p-limit';
+import fetch from 'node-fetch';
 
-// Fetch keyword in smaller chunks (e.g. 30 days) and stitch results
-async function fetchKeywordOverSegments(kw, startTime, endTime, segmentDays = 30) {
-  const segments = [];
-  for (let t = new Date(startTime); t < endTime; ) {
-    const segStart = new Date(t);
-    const segEnd = new Date(
-      Math.min(
-        segStart.getTime() + segmentDays * 24 * 60 * 60 * 1000,
-        endTime.getTime()
-      )
-    );
-    segments.push({ segStart, segEnd });
-    // move forward one day so segments overlap slightly
-    t = new Date(segEnd.getTime() + 24 * 60 * 60 * 1000);
-  }
-
-  const parts = await Promise.all(
-    segments.map(async ({ segStart, segEnd }) => {
-      const json = await googleTrends.interestOverTime({
-        keyword: kw,
-        startTime: segStart,
-        endTime: segEnd,
-        geo: '',
-        hl: 'en-US',
-        timezone: 0,
-        granularTimeResolution: true, // finer-grained results
-      });
-      const parsed = JSON.parse(json);
-      return parsed?.default?.timelineData ?? [];
-    })
-  );
-
-  // Flatten & de-duplicate by timestamp
-  const byTs = new Map();
-  for (const arr of parts) {
-    for (const e of arr) {
-      byTs.set(e.time, e);
-    }
-  }
-  return [...byTs.values()].sort((a, b) => Number(a.time) - Number(b.time));
+// Utility: normalize an array of numbers to 0–100
+function normalizeArray(arr) {
+  const vals = arr.filter(v => typeof v === 'number' && !isNaN(v));
+  if (!vals.length) return arr.map(() => null);
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  if (min === max) return arr.map(() => 50); // flat line
+  return arr.map(v => (v != null ? ((v - min) / (max - min)) * 100 : null));
 }
 
-// Gap filler to ensure every day between start and end exists
-function fillMissingDays(rows, keywords) {
-  if (!rows.length) return [];
-
-  const start = new Date(rows[0].date);
-  const end = new Date(rows[rows.length - 1].date);
-
-  const byDay = new Map(rows.map((r) => [r.date.slice(0, 10), r]));
-  const filled = [];
-
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const key = d.toISOString().slice(0, 10);
-    const existing = byDay.get(key);
-    if (existing) {
-      filled.push(existing);
-    } else {
-      // Create blank row with nulls
-      const blank = { date: new Date(key).toISOString() };
-      for (const kw of keywords) blank[kw] = null;
-      filled.push(blank);
+// Utility: merge multiple series by date
+function mergeSeries(seriesList) {
+  const byDate = new Map();
+  for (const s of seriesList) {
+    for (const row of s.data) {
+      const key = row.date;
+      const existing = byDate.get(key) || { date: key };
+      existing[s.name] = row.value;
+      byDate.set(key, existing);
     }
   }
-  return filled;
+  return [...byDate.values()].sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
+// Fetch Google Trends daily interest for a keyword
+async function fetchGoogleTrend(keyword, startTime, endTime) {
+  const json = await googleTrends.interestOverTime({
+    keyword,
+    startTime,
+    endTime,
+    geo: '',
+    hl: 'en-US',
+    timezone: 0,
+  });
+  const parsed = JSON.parse(json);
+  const timeline = parsed?.default?.timelineData ?? [];
+  return timeline.map(t => ({
+    date: new Date(Number(t.time) * 1000).toISOString().slice(0, 10),
+    value: t.value[0],
+  }));
+}
+
+// Fetch Yahoo Finance daily close (symbol like GC=F or ^IXIC)
+async function fetchYahooFinance(symbol, days) {
+  const end = Math.floor(Date.now() / 1000);
+  const start = end - days * 24 * 60 * 60;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+    symbol
+  )}?period1=${start}&period2=${end}&interval=1d`;
+  const res = await fetch(url);
+  const json = await res.json();
+  const ts = json.chart.result[0].timestamp;
+  const closes = json.chart.result[0].indicators.quote[0].close;
+  return ts.map((t, i) => ({
+    date: new Date(t * 1000).toISOString().slice(0, 10),
+    value: closes[i],
+  }));
+}
+
+// Fetch Bitcoin daily price from CoinGecko
+async function fetchCoinGecko(days) {
+  const url = `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=${days}`;
+  const res = await fetch(url);
+  const json = await res.json();
+  return json.prices.map(([t, price]) => ({
+    date: new Date(t).toISOString().slice(0, 10),
+    value: price,
+  }));
 }
 
 export default async function handler(req, res) {
@@ -77,7 +81,7 @@ export default async function handler(req, res) {
   const endTime = new Date();
   const startTime = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  const keywords = [
+  const searchKeywords = [
     'cosmetics',
     'lipstick',
     'male underwear',
@@ -90,62 +94,58 @@ export default async function handler(req, res) {
     'European Central Bank',
     'Federal Reserve',
     'Bank for International Settlements',
-    'XRP',
-    'gold',
-    'bitcoin',
-    'nasdaq',
   ];
 
   const limit = pLimit(3);
 
   try {
-    const results = await Promise.all(
-      keywords.map((kw) =>
+    // Google Trends series
+    const googleSeries = await Promise.all(
+      searchKeywords.map(kw =>
         limit(async () => {
-          try {
-            const timelineData = await fetchKeywordOverSegments(
-              kw,
-              startTime,
-              endTime,
-              30
-            );
-            console.log(`ℹ️ ${kw}: ${timelineData.length} points`);
-            return { kw, timelineData };
-          } catch (err) {
-            console.error(`🔴 Trend fetch failed for [${kw}]:`, err.message);
-            return { kw, timelineData: [] };
-          }
+          const rows = await fetchGoogleTrend(kw, startTime, endTime);
+          const values = normalizeArray(rows.map(r => r.value));
+          return {
+            name: kw,
+            data: rows.map((r, i) => ({ date: r.date, value: values[i] })),
+          };
         })
       )
     );
 
-    // Merge all keywords by day
-    const byDay = new Map();
-    for (const item of results) {
-      for (const entry of item.timelineData) {
-        const d = new Date(Number(entry.time) * 1000);
-        const key = d.toISOString().slice(0, 10); // YYYY-MM-DD
-        const existing = byDay.get(key) || { date: new Date(key).toISOString() };
-        const v = Array.isArray(entry.value) ? entry.value[0] : entry.value;
-        existing[item.kw] = Number.isFinite(v) ? v : 0;
-        byDay.set(key, existing);
-      }
-    }
+    // Market data series
+    const [gold, nasdaq, bitcoin] = await Promise.all([
+      fetchYahooFinance('GC=F', days), // Gold futures
+      fetchYahooFinance('^IXIC', days), // Nasdaq index
+      fetchCoinGecko(days), // Bitcoin
+    ]);
 
-    let normalized = [...byDay.values()].sort(
-      (a, b) => new Date(a.date) - new Date(b.date)
-    );
+    const goldNorm = normalizeArray(gold.map(r => r.value));
+    const nasdaqNorm = normalizeArray(nasdaq.map(r => r.value));
+    const bitcoinNorm = normalizeArray(bitcoin.map(r => r.value));
 
-    // Fill in missing days with nulls
-    normalized = fillMissingDays(normalized, keywords);
+    const marketSeries = [
+      {
+        name: 'gold',
+        data: gold.map((r, i) => ({ date: r.date, value: goldNorm[i] })),
+      },
+      {
+        name: 'nasdaq',
+        data: nasdaq.map((r, i) => ({ date: r.date, value: nasdaqNorm[i] })),
+      },
+      {
+        name: 'bitcoin',
+        data: bitcoin.map((r, i) => ({ date: r.date, value: bitcoinNorm[i] })),
+      },
+    ];
+
+    // Merge all series
+    const merged = mergeSeries([...googleSeries, ...marketSeries]);
 
     res.setHeader('Cache-Control', 'no-store');
-    res.status(200).json(normalized);
+    res.status(200).json(merged);
   } catch (err) {
     console.error('🔴 Error in /api/fetch-trends:', err);
-    res.setHeader('Cache-Control', 'no-store');
-    res
-      .status(500)
-      .json({ error: 'Failed to fetch trends', detail: String(err) });
+    res.status(500).json({ error: 'Failed to fetch trends', detail: String(err) });
   }
 }
