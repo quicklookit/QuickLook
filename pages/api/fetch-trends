@@ -96,6 +96,34 @@ export default async function handler(req, res) {
     'Bank for International Settlements',
   ];
 
+  // ---- fetch Google + Markets exactly like in your hybrid version ----
+  // (keep your existing helpers; only the end of the handler changes)
+  try {
+    // GOOGLE
+    const gResults = []; // push {name, data:[{date,value}]} per keyword
+    // (reuse your code that fills gResults)
+
+    // MARKETS
+    const mResults = []; // push gold/nasdaq/bitcoin with raw + value
+    // (reuse your code that fills mResults)
+
+    const merged = mergeSeries([...gResults, ...mResults]);
+
+    // >>>>>>>>>>> ADD THIS DEBUG SECTION <<<<<<<<<<<
+    if (req.query.debug === '1') {
+      // count points per series
+      const counts = {};
+      const keys = Object.keys(merged[0] || {}).filter(k => k !== 'date');
+      for (const k of keys) counts[k] = merged.filter(r => r[k] != null).length;
+
+      return res.status(200).json({
+        rows: merged.length,
+        keys,
+        countsPerSeries: counts,
+        first3: merged.slice(0, 3),
+        last3: merged.slice(-3),
+      });
+    }
   const limit = pLimit(3);
 
   try {
