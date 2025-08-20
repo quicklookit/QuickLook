@@ -177,3 +177,4 @@ export default async function handler(req, res) {
     res.status(500).json({ error: 'Failed to fetch trends', detail: String(err) });
   }
 }
+res.setHeader('X-Route-Impl', 'pages');
