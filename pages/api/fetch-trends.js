@@ -167,6 +167,19 @@ export default async function handler(req, res) {
         data: bitcoin.map((r, i) => ({ date: r.date, value: bitcoinNorm[i] })),
       },
     ];
+// DEBUG: quick probe
+if (req.query.debug === '1') {
+  const keys = Object.keys(merged[0] || {}).filter(k => k !== 'date');
+  const counts = {};
+  for (const k of keys) counts[k] = merged.filter(r => r[k] != null).length;
+  return res.status(200).json({
+    rows: merged.length,
+    keys,
+    countsPerSeries: counts,
+    first3: merged.slice(0, 3),
+    last3: merged.slice(-3),
+  });
+}
 
     // Merge all series
     const merged = mergeSeries([...googleSeries, ...marketSeries]);
