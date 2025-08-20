@@ -1,3 +1,4 @@
+res.setHeader('X-Route-Impl', 'pages');
 // pages/api/fetch-trends.js
 import googleTrends from 'google-trends-api';
 import pLimit from 'p-limit';
