@@ -59,3 +59,6 @@ const startTime = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // last 30 da
 
   return NextResponse.json(finalData);
 }
+return new Response(JSON.stringify(data), {
+  headers: { 'Content-Type': 'application/json', 'X-Route-Impl': 'app' }
+});
