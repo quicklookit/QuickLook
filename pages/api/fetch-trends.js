@@ -196,7 +196,7 @@ export default async function handler(req, res) {
     }
 
     // No CDN caching while validating
-    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Route-Impl', 'pages');
     return res.status(200).json(merged);
   } catch (err) {
     console.error('🔴 /api/fetch-trends error:', err);
