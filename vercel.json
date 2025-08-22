@@ -6,3 +6,8 @@
     }
   ]
 }
+{
+  "redirects": [
+    { "source": "https://www.quicklook.market/:path*", "destination": "https://quicklook.market/:path*", "permanent": true }
+  ]
+}
