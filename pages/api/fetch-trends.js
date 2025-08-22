@@ -2,7 +2,6 @@
 import googleTrends from 'google-trends-api';
 import pLimit from 'p-limit';
 
-/* ------------ helpers ------------ */
 function normalizeArray(arr) {
   const vals = arr.filter(v => typeof v === 'number' && !Number.isNaN(v));
   if (!vals.length) return arr.map(() => null);
@@ -17,8 +16,8 @@ function mergeSeries(seriesList) {
     for (const row of s.data) {
       const key = row.date;
       const obj = byDate.get(key) || { date: key };
-      if (row.value != null) obj[s.name] = row.value;         // normalized
-      if (row.raw != null)   obj[`${s.name}_raw`] = row.raw;  // raw
+      if (row.value != null) obj[s.name] = row.value;
+      if (row.raw != null)   obj[`${s.name}_raw`] = row.raw;
       byDate.set(key, obj);
     }
   }
@@ -30,7 +29,7 @@ async function fetchGoogleTrendOverSegments(keyword, startTime, endTime, segment
     const segStart = new Date(t);
     const segEnd = new Date(Math.min(segStart.getTime() + segmentDays * 86400000, endTime.getTime()));
     segments.push({ segStart, segEnd });
-    t = new Date(segEnd.getTime() + 86400000); // advance one day
+    t = new Date(segEnd.getTime() + 86400000);
   }
   const parts = await Promise.all(
     segments.map(async ({ segStart, segEnd }) => {
@@ -75,12 +74,10 @@ async function fetchCoinGeckoBTC(days) {
   }));
 }
 
-/* ------------ API route ------------ */
 export default async function handler(req, res) {
-  res.setHeader('X-Route-Impl', 'pages-hybrid-v7');
+  res.setHeader('X-Route-Impl', 'pages');
   res.setHeader('Cache-Control', 'no-store');
 
-  // FORCE a long window while debugging
   const days = 180;
   const endTime = new Date();
   const startTime = new Date(Date.now() - days * 86400000);
@@ -94,7 +91,6 @@ export default async function handler(req, res) {
   const limit = pLimit(3);
 
   try {
-    // Google Trends
     const googleSeries = await Promise.all(
       searchKeywords.map(kw =>
         limit(async () => {
@@ -110,7 +106,6 @@ export default async function handler(req, res) {
       )
     );
 
-    // Markets
     const [gold, nasdaq, bitcoin] = await Promise.allSettled([
       fetchYahooDaily('GC=F', days),
       fetchYahooDaily('^IXIC', days),
@@ -121,7 +116,7 @@ export default async function handler(req, res) {
 
     const gNorm = normalizeArray(gRows.map(r => r.value));
     const nNorm = normalizeArray(nRows.map(r => r.value));
-    const bNorm = normalizeArray(bRows.map(r => r.value));
+    const bNorm  = normalizeArray(bRows.map(r => r.value));
 
     const marketSeries = [
       { name: 'gold',    data: gRows.map((r,i)=>({ date:r.date, raw:r.value, value:gNorm[i] })) },
@@ -131,18 +126,11 @@ export default async function handler(req, res) {
 
     const merged = mergeSeries([...googleSeries, ...marketSeries]);
 
-    // Debug summary
     if (req.query.debug === '1') {
       const keys = Object.keys(merged[0] || {}).filter(k => k !== 'date');
       const counts = {};
       for (const k of keys) counts[k] = merged.filter(r => r[k] != null).length;
-      return res.status(200).json({
-        signature: 'debug-summary-v7',
-        rows: merged.length,
-        keys,
-        countsPerSeries: counts,
-        sample: merged.slice(0, 2),
-      });
+      return res.status(200).json({ rows: merged.length, keys, countsPerSeries: counts, sample: merged.slice(0, 2) });
     }
 
     return res.status(200).json(merged);
@@ -152,5 +140,4 @@ export default async function handler(req, res) {
   }
 }
 
-/* Force Node runtime (google-trends-api needs Node, not Edge) */
 export const config = { runtime: 'nodejs' };
