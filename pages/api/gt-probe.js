@@ -1,15 +1,18 @@
 // pages/api/gt-probe.js
 import googleTrends from 'google-trends-api';
 
+// Force Node runtime (required for google-trends-api)
 export const config = { runtime: 'nodejs' };
 
 export default async function handler(req, res) {
   try {
     const kw = (req.query.kw || 'lipstick').toString();
-    const days = Number.isFinite(parseInt(req.query.days, 10)) ? parseInt(req.query.days, 10) : 90;
+    const days = Number.isFinite(parseInt(req.query.days, 10))
+      ? parseInt(req.query.days, 10)
+      : 90;
 
     const endTime = new Date();
-    const startTime = new Date(Date.now() - days * 86400000);
+    const startTime = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
     const json = await googleTrends.interestOverTime({
       keyword: kw,
@@ -26,6 +29,7 @@ export default async function handler(req, res) {
 
     res.setHeader('Cache-Control', 'no-store');
     res.status(200).json({
+      ok: true,
       kw,
       points: arr.length,
       first: arr[0] || null,
@@ -33,6 +37,6 @@ export default async function handler(req, res) {
     });
   } catch (e) {
     res.setHeader('Cache-Control', 'no-store');
-    res.status(200).json({ error: String(e) });
+    res.status(200).json({ ok: false, error: String(e) });
   }
 }
