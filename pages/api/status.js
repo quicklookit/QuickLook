@@ -8,3 +8,4 @@ export default function handler(_req, res) {
     builtAt: new Date().toISOString()
   });
 }
+
