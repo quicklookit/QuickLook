@@ -153,6 +153,4 @@ export default async function handler(req, res) {
 }
 
 /* Force Node runtime (google-trends-api needs Node, not Edge) */
-export const config = {
-  runtime: 'nodejs',
-};
+export const config = { runtime: 'nodejs' };
