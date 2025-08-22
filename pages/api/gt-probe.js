@@ -1,7 +1,7 @@
 // pages/api/gt-probe.js
 import googleTrends from 'google-trends-api';
 
-// Force Node runtime (required for google-trends-api)
+// google-trends-api requires Node runtime
 export const config = { runtime: 'nodejs' };
 
 export default async function handler(req, res) {
@@ -21,7 +21,7 @@ export default async function handler(req, res) {
       geo: '',
       hl: 'en-US',
       timezone: 0,
-      granularTimeResolution: true,
+      granularTimeResolution: true
     });
 
     const parsed = JSON.parse(json);
@@ -33,7 +33,7 @@ export default async function handler(req, res) {
       kw,
       points: arr.length,
       first: arr[0] || null,
-      last: arr[arr.length - 1] || null,
+      last: arr[arr.length - 1] || null
     });
   } catch (e) {
     res.setHeader('Cache-Control', 'no-store');
