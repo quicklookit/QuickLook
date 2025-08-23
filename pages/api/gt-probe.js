@@ -1,4 +1,3 @@
-// pages/api/gt-probe.js
 export default async function handler(req, res) {
   const { kw = 'test', days = '30' } = req.query || {};
   res.setHeader('Cache-Control', 'no-store');
@@ -10,3 +9,4 @@ export default async function handler(req, res) {
     when: new Date().toISOString(),
   });
 }
+
