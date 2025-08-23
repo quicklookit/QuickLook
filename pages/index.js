@@ -106,7 +106,16 @@ export default function Home() {
 
   return (
     <main className="p-6 md:p-8 font-sans max-w-[1200px] mx-auto">
-      <h1 className="text-3xl font-bold mb-4">📈 Quick Look Trends</h1>
+
+<h1 className="text-3xl font-bold mb-4 flex items-center justify-between">
+  <span>📈 Quick Look Trends</span>
+  <a
+    href="/multiples"
+    className="text-sm font-normal bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
+  >
+    View Small Multiples →
+  </a>
+</h1>
 
       {/* Controls */}
       <div className="flex flex-wrap gap-3 items-center mb-4">
