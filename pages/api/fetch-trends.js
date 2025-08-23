@@ -1,4 +1,4 @@
-// pages/api/fetch-trends.js
+// 1 pages/api/fetch-trends.js
 // Reliable market proxies + BTC, serial fetching, retries, UA header,
 // and a clear debug payload with a signature + diagnostics.
 
