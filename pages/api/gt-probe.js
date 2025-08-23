@@ -1,9 +1,12 @@
+// pages/api/gt-probe.js
 export default async function handler(req, res) {
-  const { kw = 'test', days = 30 } = req.query;
+  const { kw = 'test', days = '30' } = req.query || {};
+  res.setHeader('Cache-Control', 'no-store');
   res.status(200).json({
-    probe: kw,
+    ok: true,
+    signature: 'gt-probe-pages-v1',
+    kw: String(kw),
     days: Number(days),
-    timestamp: new Date().toISOString(),
-    signature: 'gt-probe-pages-v1'
+    when: new Date().toISOString(),
   });
 }
