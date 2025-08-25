@@ -4,14 +4,3 @@
       "path": "/api/fetch-trends",
       "schedule": "0 0 * * *"
     }
-  ],
-  "redirects": [
-    {
-      "source": "/:path*",
-      "has": [{ "type": "host", "value": "www.quicklook.market" }],
-      "destination": "https://quicklook.market/:path*",
-      "permanent": true
-    }
-  ]
-}
-
