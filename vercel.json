@@ -1,13 +1,1 @@
-{
-  "functions": {
-    "api/fetch-trends.js": {
-      "runtime": "nodejs18.x"
-    }
-  },
-  "crons": [
-    {
-      "path": "/api/fetch-trends",
-      "schedule": "0 0 * * *"
-    }
-  ]
-}
+{}
