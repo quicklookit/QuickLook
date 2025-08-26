@@ -1,240 +1,347 @@
 // pages/index.js
-import { useEffect, useMemo, useState } from 'react';
-import { Line } from 'react-chartjs-2';
-import 'chart.js/auto';
-import Thermometer from '../components/Thermometer';
-import CorrelationHeatmap from '../components/CorrelationHeatmap';
+import { useEffect, useMemo, useState } from "react";
+import CorrelationHeatmap from "../components/CorrelationHeatmap";
 
-const PALETTE = [
-  '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
-  '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
-  '#393b79', '#637939', '#8c6d31', '#843c39', '#7b4173',
-  '#3182bd', '#e6550d', '#31a354', '#756bb1', '#636363',
-];
+// Friendly labels for legend / UI
+const LABELS = {
+  cosmetics: "Cosmetics / Lipstick",
+  lipstick: "Lipstick",
+  "male underwear": "Male Underwear",
+  gold: "Gold (search)",
+  bitcoin: "Bitcoin (search)",
+  nasdaq: "Nasdaq (search)",
+};
 
-function rollingMean(arr, k = 7) {
-  if (k <= 1) return arr;
-  const out = new Array(arr.length).fill(null);
-  let sum = 0, cnt = 0;
+// default 12 months
+const DEFAULT_DAYS = 365;
+
+// Simple moving average
+function sma(arr, win = 1) {
+  if (win <= 1) return arr.slice();
+  const out = Array(arr.length).fill(null);
+  let sum = 0,
+    cnt = 0;
   for (let i = 0; i < arr.length; i++) {
     const v = arr[i];
-    if (typeof v === 'number' && Number.isFinite(v)) {
-      sum += v; cnt += 1;
+    if (Number.isFinite(v)) {
+      sum += v;
+      cnt++;
     }
-    if (i >= k) {
-      const old = arr[i - k];
-      if (typeof old === 'number' && Number.isFinite(old)) {
-        sum -= old; cnt -= 1;
+    if (i >= win) {
+      const old = arr[i - win];
+      if (Number.isFinite(old)) {
+        sum -= old;
+        cnt--;
       }
     }
-    out[i] = cnt ? sum / cnt : null;
+    out[i] = cnt > 0 ? sum / cnt : null;
   }
   return out;
 }
 
-export default function Home() {
-  const [days, setDays] = useState(365);
-  const [rows, setRows] = useState([]);
-  const [mode, setMode] = useState('normalized'); // 'normalized' | 'raw'
-  const [smooth, setSmooth] = useState(true);     // 7-day smoothing
-  const [loading, setLoading] = useState(true);
-  const [visible, setVisible] = useState({});     // series visibility map
-  const [query, setQuery] = useState('');         // search filter
+// SVG helpers
+function pathFromSeries(xScale, yScale, xs, ys) {
+  let d = "";
+  for (let i = 0; i < xs.length; i++) {
+    const y = ys[i];
+    if (!Number.isFinite(y)) continue;
+    const cx = xScale(i),
+      cy = yScale(y);
+    d += (d ? " L " : "M ") + cx + " " + cy;
+  }
+  return d;
+}
 
-  // fetch 12 months by default
+export default function Home() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(DEFAULT_DAYS);
+  const [smooth, setSmooth] = useState(7); // 7-day smoothing default
+  const [filter, setFilter] = useState("");
+
+  // fetch 12 months (default) from our API
   useEffect(() => {
-    setLoading(true);
-    fetch(`/api/fetch-trends?days=${days}`)
-      .then(r => r.json())
-      .then(json => {
-        // accept either array (prod) or {rows:[]} (debug)
-        const data = Array.isArray(json) ? json : (json.rows || []);
-        setRows(data);
-        setLoading(false);
-        // initialize visibility (on by default)
-        const keys = Object.keys(data[0] || {}).filter(k => k !== 'date' && !k.endsWith('_raw'));
-        const vis = {};
-        keys.forEach(k => vis[k] = true);
-        setVisible(vis);
-      })
-      .catch(() => setLoading(false));
+    let alive = true;
+    async function run() {
+      setLoading(true);
+      try {
+        const r = await fetch(`/api/fetch-trends?days=${days}`);
+        const json = await r.json();
+        if (!alive) return;
+        setRows(json || []);
+      } catch (e) {
+        console.error("fetch error:", e);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+    run();
+    return () => {
+      alive = false;
+    };
   }, [days]);
 
-  // compute chart datasets
-  const { labels, datasets, avg } = useMemo(() => {
-    if (!rows.length) return { labels: [], datasets: [], avg: 0 };
-    const labels = rows.map(r => r.date?.slice(0, 10) ?? '');
+  // Build column keys and arrays per key
+  const { dates, keys, seriesByKey } = useMemo(() => {
+    if (!rows.length) return { dates: [], keys: [], seriesByKey: {} };
+    const dates = rows.map((r) => r.date);
+    const allKeys = Object.keys(rows[0] || {}).filter(
+      (k) => k !== "date" && !k.endsWith("_raw")
+    );
+    const seriesByKey = {};
+    for (const k of allKeys) {
+      seriesByKey[k] = rows.map((r) =>
+        Number.isFinite(r[k]) ? r[k] : null
+      );
+    }
+    return { dates, keys: allKeys, seriesByKey };
+  }, [rows]);
 
-    // choose value accessor
-    const baseKeys = Object.keys(rows[0]).filter(k => k !== 'date');
-    const valueKeys = baseKeys.filter(k =>
-      mode === 'normalized' ? !k.endsWith('_raw') : k.endsWith('_raw')
-    ).map(k => (mode === 'normalized' ? k : k.replace(/_raw$/, '')));
+  // Smoothed data for plotting
+  const smoothByKey = useMemo(() => {
+    const out = {};
+    for (const k of keys) out[k] = sma(seriesByKey[k], smooth);
+    return out;
+  }, [seriesByKey, keys, smooth]);
 
-    // build datasets
-    const datasets = valueKeys
-      .filter(name => visible[name])
-      .filter(name => name.toLowerCase().includes(query.toLowerCase()))
-      .map((name, i) => {
-        const key = mode === 'normalized' ? name : `${name}_raw`;
-        let data = rows.map(r => {
-          const v = r[key];
-          return (typeof v === 'number' && Number.isFinite(v)) ? v : null;
-        });
-        if (smooth) data = rollingMean(data, 7);
-        return {
-          label: name,
-          data,
-          spanGaps: true,
-          borderColor: PALETTE[i % PALETTE.length],
-          pointRadius: 0,
-          borderWidth: 1.8,
-          tension: 0.2,
-        };
-      });
+  // Filter visible series by search box
+  const visibleKeys = useMemo(() => {
+    const f = filter.trim().toLowerCase();
+    if (!f) return keys;
+    return keys.filter((k) => {
+      const label = LABELS[k] || k;
+      return label.toLowerCase().includes(f);
+    });
+  }, [keys, filter]);
 
-    // average of last day across visible normalized series (for your thermometer)
-    const last = rows[rows.length - 1] || {};
-    const values = valueKeys
-      .filter(name => visible[name])
-      .map(name => Number(mode === 'normalized' ? last[name] : last[`${name}_raw`]))
-      .filter(v => Number.isFinite(v));
-    const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-
-    return { labels, datasets, avg };
-  }, [rows, mode, smooth, visible, query]);
+  // Market Heat Index = average of latest values across visible series
+  const heatIndex = useMemo(() => {
+    if (!rows.length || !visibleKeys.length) return 0;
+    const last = rows[rows.length - 1];
+    const vals = visibleKeys
+      .map((k) => last[k])
+      .filter((v) => Number.isFinite(v));
+    if (!vals.length) return 0;
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  }, [rows, visibleKeys]);
 
   return (
-    <main className="p-6 md:p-8 font-sans max-w-[1200px] mx-auto">
-
-<h1 className="text-3xl font-bold mb-4 flex items-center justify-between">
-  <span>📈 Quick Look Trends</span>
-  <a
-    href="/multiples"
-    className="text-sm font-normal bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
-  >
-    View Small Multiples →
-  </a>
-</h1>
-
-      {/* Controls */}
-      <div className="flex flex-wrap gap-3 items-center mb-4">
-        <label className="text-sm">
-          Range:&nbsp;
-          <select
-            className="border rounded px-2 py-1"
-            value={days}
-            onChange={(e) => setDays(parseInt(e.target.value, 10))}
+    <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto" }}>
+      <header style={{ padding: "18px 18px 8px" }}>
+        <h1 style={{ margin: 0 }}>
+          <span role="img" aria-label="chart">
+            📈
+          </span>{" "}
+          Quick Look Trends{" "}
+          <a
+            href="/multiples"
+            style={{ fontSize: 18, marginLeft: 8, textDecoration: "underline" }}
           >
-            <option value={90}>90 days</option>
-            <option value={180}>6 months</option>
-            <option value={365}>12 months</option>
-            <option value={730}>24 months</option>
-          </select>
-        </label>
+            View Small Multiples →
+          </a>
+        </h1>
 
-        <label className="text-sm">
-          Values:&nbsp;
-          <select
-            className="border rounded px-2 py-1"
-            value={mode}
-            onChange={(e) => setMode(e.target.value)}
-          >
-            <option value="normalized">Normalized (0–100)</option>
-            <option value="raw">Raw (if available)</option>
-          </select>
-        </label>
+        <div
+          style={{
+            marginTop: 10,
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
+          <label>
+            Range:&nbsp;
+            <select
+              value={days}
+              onChange={(e) => setDays(parseInt(e.target.value, 10))}
+            >
+              <option value={180}>6 months</option>
+              <option value={365}>12 months</option>
+              <option value={730}>24 months</option>
+            </select>
+          </label>
 
-        <label className="text-sm inline-flex items-center gap-2">
+          <label>
+            Values:&nbsp;
+            <span>Normalized (0–100)</span>
+          </label>
+
+          <label>
+            <input
+              type="checkbox"
+              checked={smooth > 1}
+              onChange={(e) => setSmooth(e.target.checked ? 7 : 1)}
+            />{" "}
+            7-day smoothing
+          </label>
+
           <input
-            type="checkbox"
-            checked={smooth}
-            onChange={(e) => setSmooth(e.target.checked)}
+            placeholder="Search series…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            style={{ padding: "4px 6px", minWidth: 180 }}
           />
-          7-day smoothing
-        </label>
+        </div>
+      </header>
 
-        <input
-          placeholder="Search series…"
-          className="border rounded px-2 py-1 text-sm flex-1 min-w-[180px]"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+      <section style={{ padding: "0 18px 12px" }}>
+        <h3 style={{ margin: "8px 0 6px" }}>
+          <span role="img" aria-label="fire">
+            🔥
+          </span>{" "}
+          Market Heat Index
+        </h3>
+        <div style={{ color: "#666", marginBottom: 8 }}>
+          {heatIndex.toFixed(1)} / 100
+        </div>
+
+        <Chart
+          dates={dates}
+          keys={visibleKeys}
+          valuesByKey={smoothByKey}
+          labels={LABELS}
         />
-      </div>
+      </section>
 
-      {/* Small legend with toggles */}
-      <Legend rows={rows} mode={mode} visible={visible} setVisible={setVisible} query={query} />
+      <section style={{ padding: "0 18px 28px" }}>
+        <h3 style={{ margin: "8px 0 10px" }}>
+          <span role="img" aria-label="matrix">
+            🧮
+          </span>{" "}
+        Correlation Heat Map (same selection)
+        </h3>
+        <CorrelationHeatmap
+          dates={dates}
+          valuesByKey={smoothByKey}
+          keys={visibleKeys}
+          labels={LABELS}
+        />
+      </section>
 
-      {/* Thermometer / Heat Index */}
-      <div className="mb-3">
-        <h2 className="text-xl font-semibold mb-1">🔥 Market Heat Index</h2>
-        <div className="text-sm text-gray-600 mb-2">{avg.toFixed(1)} / 100</div>
-        <Thermometer value={avg} />
-      </div>
-
-      {/* Chart */}
-      <div className="bg-white p-4 rounded shadow mb-6">
-        {loading ? (
-          <div className="text-sm text-gray-600">Loading…</div>
-        ) : (
-          <Line
-            data={{ labels, datasets }}
-            options={{
-              responsive: true,
-              maintainAspectRatio: false,
-              interaction: { mode: 'index', intersect: false },
-              plugins: {
-                legend: { display: false },
-                tooltip: {
-                  callbacks: {
-                    label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2)}`,
-                  },
-                },
-                decimation: { enabled: true, algorithm: 'min-max' },
-              },
-              scales: {
-                x: { ticks: { maxTicksLimit: 10 } },
-                y: { beginAtZero: mode === 'normalized' },
-              },
-              elements: { line: { cubicInterpolationMode: 'default' } },
-            }}
-            height={420}
-          />
-        )}
-      </div>
-
-      {/* Correlation heatmap stays below */}
-      <CorrelationHeatmap />
-    </main>
+      {loading && (
+        <div style={{ padding: 18, color: "#666" }}>Loading…</div>
+      )}
+    </div>
   );
 }
 
-function Legend({ rows, mode, visible, setVisible, query }) {
-  const keys = useMemo(() => {
-    const r0 = rows[0] || {};
-    const base = Object.keys(r0).filter(k => k !== 'date');
-    const names = mode === 'normalized'
-      ? base.filter(k => !k.endsWith('_raw'))
-      : base.filter(k => k.endsWith('_raw')).map(k => k.replace(/_raw$/, ''));
-    return names.filter(n => n.toLowerCase().includes(query.toLowerCase()));
-  }, [rows, mode, query]);
+/* ---------------- SVG Chart (no deps) ---------------- */
 
-  if (!keys.length) return null;
+function Chart({ dates, keys, valuesByKey, labels }) {
+  const W = Math.min(1100, typeof window !== "undefined" ? window.innerWidth - 40 : 1100);
+  const H = 420;
+  const PAD = { l: 50, r: 20, t: 20, b: 32 };
+  const innerW = W - PAD.l - PAD.r;
+  const innerH = H - PAD.t - PAD.b;
+
+  const n = dates.length;
+
+  const xScale = (i) => PAD.l + (n <= 1 ? 0 : (i / (n - 1)) * innerW);
+  const yScale = (v) => PAD.t + innerH - (v / 100) * innerH;
+
+  // gridlines + axes ticks (quarterly-ish)
+  const xTicks = 6;
+  const tickIdx = Array.from({ length: xTicks + 1 }, (_, i) =>
+    Math.round((i / xTicks) * (n - 1))
+  );
+
+  // palette (stable)
+  const palette = [
+    "#2563eb", "#16a34a", "#ea580c", "#a855f7", "#0891b2", "#f43f5e",
+    "#7c3aed", "#0ea5e9", "#ef4444", "#22c55e", "#eab308", "#64748b",
+    "#db2777", "#10b981", "#9333ea", "#f97316",
+  ];
 
   return (
-    <div className="flex flex-wrap gap-2 mb-3">
-      {keys.map((name) => (
-        <button
-          key={name}
-          onClick={() => setVisible(v => ({ ...v, [name]: !v[name] }))}
-          className={`px-2 py-1 rounded text-xs border ${
-            visible[name] ? 'bg-blue-50 border-blue-300' : 'bg-gray-100 border-gray-300 line-through'
-          }`}
-          title={visible[name] ? 'Hide' : 'Show'}
-        >
-          {name}
-        </button>
-      ))}
+    <div style={{ overflowX: "auto" }}>
+      <svg width={W} height={H} style={{ background: "#fff", borderRadius: 8, boxShadow: "0 0 0 1px #eee inset" }}>
+        {/* Y gridlines */}
+        {[0, 20, 40, 60, 80, 100].map((v) => (
+          <g key={v}>
+            <line
+              x1={PAD.l}
+              x2={W - PAD.r}
+              y1={yScale(v)}
+              y2={yScale(v)}
+              stroke="#eee"
+            />
+            <text x={PAD.l - 8} y={yScale(v) + 4} fontSize="11" textAnchor="end" fill="#777">
+              {v}
+            </text>
+          </g>
+        ))}
+
+        {/* X ticks */}
+        {tickIdx.map((i) => (
+          <g key={i}>
+            <line
+              x1={xScale(i)}
+              x2={xScale(i)}
+              y1={PAD.t}
+              y2={PAD.t + innerH}
+              stroke="#f8f8f8"
+            />
+            <text
+              x={xScale(i)}
+              y={H - 10}
+              fontSize="11"
+              textAnchor="middle"
+              fill="#777"
+            >
+              {dates[i]?.slice(0, 10)}
+            </text>
+          </g>
+        ))}
+
+        {/* Series paths */}
+        {keys.map((k, idx) => {
+          const ys = valuesByKey[k] || [];
+          const col = palette[idx % palette.length];
+          return (
+            <path
+              key={k}
+              d={pathFromSeries(xScale, yScale, dates, ys)}
+              fill="none"
+              stroke={col}
+              strokeWidth="2"
+              vectorEffect="non-scaling-stroke"
+            />
+          );
+        })}
+
+        {/* Legend */}
+        <Legend keys={keys} labels={labels} palette={palette} x={PAD.l} y={8} />
+      </svg>
     </div>
+  );
+}
+
+function Legend({ keys, labels, palette, x, y }) {
+  // wrap legend into rows
+  const gapX = 14, gapY = 18;
+  let cx = x, cy = y;
+  const items = [];
+  keys.forEach((k, i) => {
+    const name = labels[k] || k;
+    const w = name.length * 6 + 28;
+    if (cx + w > (typeof window !== "undefined" ? window.innerWidth - 40 : 1100)) {
+      cx = x;
+      cy += gapY;
+    }
+    items.push({ k, name, x: cx, y: cy, color: palette[i % palette.length] });
+    cx += w + gapX;
+  });
+  return (
+    <g>
+      {items.map((it) => (
+        <g key={it.k} transform={`translate(${it.x}, ${it.y})`}>
+          <rect width="14" height="4" y="8" rx="2" fill={it.color} />
+          <text x="22" y="12" fontSize="12" fill="#222">
+            {it.name}
+          </text>
+        </g>
+      ))}
+    </g>
   );
 }
