@@ -11,6 +11,7 @@ const LABELS = {
   bitcoin: "Bitcoin (search)",
   nasdaq: "Nasdaq (search)",
 };
+import MarkerGuide from "../components/MarkerGuide";
 
 // default 12 months
 const DEFAULT_DAYS = 365;
