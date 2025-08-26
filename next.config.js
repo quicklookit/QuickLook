@@ -1,9 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // DO NOT set `output: 'export'` — that would remove API routes.
-  // If you want smaller server bundles, you can use:
-  // output: 'standalone',
+  // IMPORTANT: do NOT use output: 'export'
 };
-
 module.exports = nextConfig;
