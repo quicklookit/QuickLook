@@ -1,191 +1,145 @@
-// 1 pages/api/fetch-trends.js
-// Reliable market proxies + BTC, serial fetching, retries, UA header,
-// and a clear debug payload with a signature + diagnostics.
+// pages/api/fetch-trends.js
+// Daily Google Trends for your keywords, merged by date.
+// Keywords include cosmetics/lipstick & male underwear, plus gold/bitcoin/nasdaq.
+// Supports ?days=365 and ?debug=1
 
+import googleTrends from 'google-trends-api';
 import pLimit from 'p-limit';
 
-const UA =
-  'Mozilla/5.0 (compatible; QuickLookBot/1.0; +https://quicklook.market)';
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const DAY = 24 * 60 * 60 * 1000;
 
-function normalizeArray(arr) {
-  const vals = arr.filter((v) => typeof v === 'number' && Number.isFinite(v));
+/* -------- helpers -------- */
+
+function normalize(arr) {
+  const vals = arr.filter((v) => Number.isFinite(v));
   if (!vals.length) return arr.map(() => null);
-  const min = Math.min(...vals),
-    max = Math.max(...vals);
-  if (min === max) return arr.map(() => 50);
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  if (min === max) return arr.map(() => 50); // flat series fallback
   return arr.map((v) => (v == null ? null : ((v - min) / (max - min)) * 100));
 }
 
-function mergeSeries(seriesList) {
+function mergeByDate(seriesList) {
   const byDate = new Map();
   for (const s of seriesList) {
     for (const row of s.data) {
-      const key = row.date;
-      const obj = byDate.get(key) || { date: key };
-      if (row.value != null) obj[s.name] = row.value;
-      if (row.raw != null) obj[`${s.name}_raw`] = row.raw;
-      byDate.set(key, obj);
+      const obj = byDate.get(row.date) || { date: row.date };
+      obj[s.name] = row.value;           // normalized
+      obj[`${s.name}_raw`] = row.raw;    // raw score (0..100 google)
+      byDate.set(row.date, obj);
     }
   }
-  return [...byDate.values()].sort(
-    (a, b) => new Date(a.date) - new Date(b.date)
-  );
+  return [...byDate.values()].sort((a, b) => new Date(a.date) - new Date(b.date));
 }
 
-async function fetchYahooDaily(symbol, days, diag) {
-  const end = Math.floor(Date.now() / 1000);
-  const start = end - days * 86400;
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-    symbol
-  )}?period1=${start}&period2=${end}&interval=1d`;
+// Fetch one keyword using short segments to force daily granularity.
+async function fetchKeywordDaily(keyword, startTime, endTime) {
+  // split into ~30 day segments with 1 day overlap
+  const segments = [];
+  for (let t = new Date(startTime); t < endTime; ) {
+    const segStart = new Date(t);
+    const segEnd = new Date(Math.min(segStart.getTime() + 30 * DAY, endTime.getTime()));
+    segments.push([segStart, segEnd]);
+    t = new Date(segEnd.getTime() + DAY);
+  }
 
-  let status = 0;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const r = await fetch(url, {
-        headers: { accept: 'application/json', 'user-agent': UA },
+  const parts = await Promise.all(
+    segments.map(async ([segStart, segEnd]) => {
+      const json = await googleTrends.interestOverTime({
+        keyword,
+        startTime: segStart,
+        endTime: segEnd,
+        geo: '',              // global
+        hl: 'en-US',
+        timezone: 0,
+        granularTimeResolution: true, // prefer daily
       });
-      status = r.status;
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const j = await r.json();
-      const res = j?.chart?.result?.[0];
-      const ts = res?.timestamp || [];
-      const closes = res?.indicators?.quote?.[0]?.close || [];
-      const rows = ts.map((t, i) => ({
-        date: new Date(t * 1000).toISOString().slice(0, 10),
-        value: closes[i],
-      }));
-      diag.ok = true;
-      diag.http = status;
-      diag.points = rows.length;
-      diag.attempt = attempt;
-      return rows;
-    } catch (e) {
-      diag.ok = false;
-      diag.http = status;
-      diag.error = String(e?.message || e);
-      diag.attempt = attempt;
-      await sleep(400 * attempt);
-    }
-  }
-  return [];
-}
+      const parsed = JSON.parse(json);
+      return parsed?.default?.timelineData ?? [];
+    })
+  );
 
-async function fetchCoinGeckoBTC(days, diag) {
-  let status = 0;
-  try {
-    const r = await fetch(
-      `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=${days}`,
-      { headers: { accept: 'application/json', 'user-agent': UA } }
-    );
-    status = r.status;
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const j = await r.json();
-    const rows = (j.prices || []).map(([t, price]) => ({
-      date: new Date(t).toISOString().slice(0, 10),
-      value: price,
+  // dedupe by timestamp
+  const byTs = new Map();
+  for (const arr of parts) {
+    for (const e of arr) byTs.set(e.time, e);
+  }
+
+  const rows = [...byTs.values()]
+    .sort((a, b) => Number(a.time) - Number(b.time))
+    .map((e) => ({
+      date: new Date(Number(e.time) * 1000).toISOString().slice(0, 10), // YYYY-MM-DD
+      raw: Array.isArray(e.value) ? e.value[0] : e.value,
     }));
-    diag.ok = true;
-    diag.http = status;
-    diag.points = rows.length;
-    return rows;
-  } catch (e) {
-    diag.ok = false;
-    diag.http = status;
-    diag.error = String(e?.message || e);
-    return [];
-  }
+
+  const norm = normalize(rows.map((r) => r.raw));
+  return rows.map((r, i) => ({ date: r.date, raw: r.raw, value: norm[i] }));
 }
 
-/* ---- Reliable series set ---- */
-const SERIES = [
-  { name: 'gold', kind: 'yahoo', symbol: 'GC=F' },
-  { name: 'nasdaq', kind: 'yahoo', symbol: '^IXIC' },
-  { name: 'bitcoin', kind: 'coingecko', symbol: 'BTC' },
-
-  { name: 'sp500', kind: 'yahoo', symbol: '^GSPC' },
-  { name: 'dow', kind: 'yahoo', symbol: '^DJI' },
-  { name: 'eurostoxx', kind: 'yahoo', symbol: '^STOXX50E' },
-  { name: 'treasuries_7_10y', kind: 'yahoo', symbol: 'IEF' },
-  { name: 'high_yield', kind: 'yahoo', symbol: 'HYG' },
-  { name: 'investment_grade', kind: 'yahoo', symbol: 'LQD' },
-  { name: 'financials', kind: 'yahoo', symbol: 'XLF' },
-  { name: 'energy', kind: 'yahoo', symbol: 'XLE' },
-  { name: 'industrials', kind: 'yahoo', symbol: 'XLI' },
-  { name: 'consumer_disc', kind: 'yahoo', symbol: 'XLY' },
-  { name: 'consumer_staples', kind: 'yahoo', symbol: 'XLP' },
-  { name: 'homebuilders', kind: 'yahoo', symbol: 'XHB' },
-];
+/* -------- route -------- */
 
 export default async function handler(req, res) {
-  // Always mark this build in headers so we can spot stale deployments
-  res.setHeader('X-Fetch-Trends-Signature', 'reliable-v1');
-  res.setHeader('Cache-Control', 'no-store');
-
+  // how far back
   const days = Number.isFinite(parseInt(req.query.days, 10))
     ? parseInt(req.query.days, 10)
-    : 180;
+    : 365;
 
-  const limit = pLimit(1); // serial to keep Yahoo happy
-  const diagnostics = [];
+  const endTime = new Date();
+  const startTime = new Date(Date.now() - days * DAY);
+
+  // your keywords (search intent, NOT ETFs)
+  const KEYWORDS = [
+    'cosmetics',
+    'lipstick',
+    'male underwear',
+    'gold',
+    'bitcoin',
+    'nasdaq',
+  ];
+
+  // keep Google happy: 1 concurrent (you can try 2–3 later)
+  const limit = pLimit(1);
 
   try {
     const series = await Promise.all(
-      SERIES.map((s) =>
+      KEYWORDS.map((kw) =>
         limit(async () => {
-          const diag = { name: s.name, kind: s.kind, symbol: s.symbol };
-          let rows = [];
-          if (s.kind === 'yahoo') rows = await fetchYahooDaily(s.symbol, days, diag);
-          else if (s.kind === 'coingecko') rows = await fetchCoinGeckoBTC(days, diag);
-
-          diagnostics.push(diag);
-          console.log(
-            `[series] ${s.name} (${s.symbol || s.kind}) -> ok=${diag.ok} http=${
-              diag.http
-            } pts=${diag.points || 0} ${diag.error ? 'err=' + diag.error : ''}`
-          );
-
-          const norm = normalizeArray(rows.map((r) => r.value));
-          return {
-            name: s.name,
-            data: rows.map((r, i) => ({
-              date: r.date,
-              raw: r.value,
-              value: norm[i],
-            })),
-          };
+          try {
+            const data = await fetchKeywordDaily(kw, startTime, endTime);
+            return { name: kw, data };
+          } catch (e) {
+            console.error(`[fetch-trends] failed for "${kw}":`, e?.message || e);
+            return { name: kw, data: [] };
+          }
         })
       )
     );
 
-    const merged = mergeSeries(series);
+    const merged = mergeByDate(series);
 
-    // Debug payload
+    // debug payload (helps confirm what deployed)
     if (req.query.debug === '1') {
       const keys = Object.keys(merged[0] || {}).filter((k) => k !== 'date');
       const counts = {};
       for (const k of keys) counts[k] = merged.filter((r) => r[k] != null).length;
 
-      // Make it unmistakable that this is the new code:
+      res.setHeader('Cache-Control', 'no-store');
       return res.status(200).json({
-        signature: 'fetch-trends-reliable-v1',
+        signature: 'fetch-trends-google-daily-v1',
         rows: merged.length,
         series: keys,
         countsPerSeries: counts,
-        diagnostics,
         sampleStart: merged.slice(0, 2),
         sampleEnd: merged.slice(-2),
       });
     }
 
+    // keep it uncached while you iterate
+    res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json(merged);
   } catch (err) {
-    console.error('fetch-trends error:', err);
-    return res
-      .status(500)
-      .json({ error: 'Failed to fetch trends', detail: String(err) });
+    console.error('[fetch-trends] route error:', err);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(500).json({ error: 'Failed to fetch trends', detail: String(err) });
   }
 }
-
-export const config = { runtime: 'nodejs' };
