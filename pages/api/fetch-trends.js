@@ -118,7 +118,7 @@ export default async function handler(req, res) {
     const merged = mergeByDate(series);
 
     // debug payload (helps confirm what deployed)
-    if (req.query.debug === '1') {
+    if (req.query.debug === '1?') {
       const keys = Object.keys(merged[0] || {}).filter((k) => k !== 'date');
       const counts = {};
       for (const k of keys) counts[k] = merged.filter((r) => r[k] != null).length;
