@@ -172,13 +172,13 @@ export default async function handler(req, res) {
     ? parseInt(req.query.days, 10)
     : 365;
 
-  // Define distinct sources
+  // Define distinct sources (no extra bracket below!)
   const SOURCES = [
     { name: 'Gold (search)', kind: 'yahoo', symbol: 'GLD' },
     { name: 'Bitcoin (search)', kind: 'coingecko', symbol: 'BTC' },
     { name: 'Nasdaq (search)', kind: 'yahoo', symbol: '^IXIC' },
 
-    // These two are now Google Trends keywords (distinct)
+    // Google Trends keywords (distinct)
     { name: 'Cosmetics / Lipstick', kind: 'google', keyword: 'lipstick' },
     { name: 'Male Underwear', kind: 'google', keyword: 'male underwear' },
   ];
