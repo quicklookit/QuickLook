@@ -88,14 +88,18 @@ async function fetchCoinGeckoBTC(days, diag) {
 }
 
 // “labels” you want on the chart → data sources we fetch
-const SERIES = [
-  { name: 'Gold (search)',    kind: 'yahoo',     symbol: 'GLD'   }, // ETF proxy
-  { name: 'Bitcoin (search)', kind: 'coingecko', symbol: 'BTC'   },
-  { name: 'Nasdaq (search)',  kind: 'yahoo',     symbol: '^IXIC' },
 
-  // lipstick/male underwear proxies (broad but reliable ETFs)
-  { name: 'Cosmetics / Lipstick',  kind: 'yahoo', symbol: 'XRT' }, // retail ETF
-  { name: 'Male Underwear',        kind: 'yahoo', symbol: 'XRT' }, // same proxy
+const series = [
+  { name: "Gold (search)", kind: "yahoo", symbol: "GLD" },
+  { name: "Bitcoin (search)", kind: "coingecko", symbol: "BTC" },
+  { name: "Nasdaq (search)", kind: "yahoo", symbol: "^IXIC" },
+
+  // Cosmetics/Lipstick via Google Trends keyword
+  { name: "Cosmetics / Lipstick", kind: "google", keyword: "lipstick" },
+
+  // Male Underwear via Google Trends keyword
+  { name: "Male Underwear", kind: "google", keyword: "male underwear" }
+];
 
   // feel free to add more here later…
 ];
