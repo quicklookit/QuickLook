@@ -101,9 +101,6 @@ const series = [
   { name: "Male Underwear", kind: "google", keyword: "male underwear" }
 ];
 
-  // feel free to add more here later…
-];
-
 export default async function handler(req, res) {
   // quick signature ping
   if (req.query.sig === '1') {
