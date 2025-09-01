@@ -133,7 +133,6 @@ async function fetchGoogleKeyword(keyword, days, diag) {
       const arr = parsed?.default?.timelineData ?? [];
       parts.push(...arr);
     } catch (e) {
-      // keep going; a missing segment just reduces points
       diag.errors = [...(diag.errors || []), String(e?.message || e)];
     }
     await sleep(150); // be polite
@@ -165,25 +164,23 @@ async function fetchGoogleKeyword(keyword, days, diag) {
 /* ===================== API ===================== */
 
 export default async function handler(req, res) {
-  // don’t cache while you iterate
   res.setHeader('Cache-Control', 'no-store');
 
   const days = Number.isFinite(parseInt(req.query.days, 10))
     ? parseInt(req.query.days, 10)
     : 365;
 
-  // Define distinct sources (no extra bracket below!)
+  // DISTINCT sources (no duplicate or extra bracket below!)
   const SOURCES = [
-    { name: 'Gold (search)', kind: 'yahoo', symbol: 'GLD' },
-    { name: 'Bitcoin (search)', kind: 'coingecko', symbol: 'BTC' },
-    { name: 'Nasdaq (search)', kind: 'yahoo', symbol: '^IXIC' },
+    { name: 'Gold (search)',     kind: 'yahoo',     symbol: 'GLD'  },
+    { name: 'Bitcoin (search)',  kind: 'coingecko', symbol: 'BTC'  },
+    { name: 'Nasdaq (search)',   kind: 'yahoo',     symbol: '^IXIC'},
 
     // Google Trends keywords (distinct)
     { name: 'Cosmetics / Lipstick', kind: 'google', keyword: 'lipstick' },
-    { name: 'Male Underwear', kind: 'google', keyword: 'male underwear' },
+    { name: 'Male Underwear',       kind: 'google', keyword: 'male underwear' },
   ];
 
-  // Keep concurrency low to avoid throttling
   const limit = pLimit(2);
   const diagnostics = [];
 
