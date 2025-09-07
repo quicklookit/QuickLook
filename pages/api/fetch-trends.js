@@ -179,6 +179,13 @@ export default async function handler(req, res) {
     // Google Trends keywords (distinct)
     { name: 'Cosmetics / Lipstick', kind: 'google', keyword: 'lipstick' },
     { name: 'Male Underwear',       kind: 'google', keyword: 'male underwear' },
+      // --- Cardboard / packaging indicators ---
+  { name: 'Cardboard Boxes', kind: 'google', keyword: 'cardboard boxes' },
+  { name: 'Moving Boxes',    kind: 'google', keyword: 'moving boxes' }, // optional
+
+  { name: 'Packaging: International Paper (IP)', kind: 'yahoo', symbol: 'IP'  },
+  { name: 'Packaging: Packaging Corp (PKG)',     kind: 'yahoo', symbol: 'PKG' },
+
   ];
 
   const limit = pLimit(2);
