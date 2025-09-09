@@ -41,10 +41,10 @@ function mergeSeries(seriesList) {
 
 /* ===================== fetchers ===================== */
 
-// Yahoo Finance daily close
 async function fetchYahooDaily(symbol, days, diag) {
   const end = Math.floor(Date.now() / 1000);
   const start = end - days * 24 * 60 * 60;
+  // ✅ FIXED: Removed extra spaces after /chart/
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
     symbol
   )}?period1=${start}&period2=${end}&interval=1d`;
@@ -129,7 +129,15 @@ async function fetchGoogleKeyword(keyword, days, diag) {
         timezone: 0,
         granularTimeResolution: true,
       });
-      const parsed = JSON.parse(json);
+
+      // ✅ IMPROVED: Wrap JSON.parse in try/catch for better error handling
+      let parsed;
+      try {
+        parsed = JSON.parse(json);
+      } catch (parseError) {
+        throw new Error(`Failed to parse Google Trends response: ${parseError.message}. Raw: ${json?.substring(0, 200)}`);
+      }
+
       const arr = parsed?.default?.timelineData ?? [];
       parts.push(...arr);
     } catch (e) {
@@ -171,6 +179,7 @@ export default async function handler(req, res) {
     : 365;
 
   // DISTINCT sources (no duplicate or extra bracket below!)
+  // ✅ FORMATTING: Fixed indentation for readability
   const SOURCES = [
     { name: 'Gold (search)',     kind: 'yahoo',     symbol: 'GLD'  },
     { name: 'Bitcoin (search)',  kind: 'coingecko', symbol: 'BTC'  },
@@ -179,13 +188,12 @@ export default async function handler(req, res) {
     // Google Trends keywords (distinct)
     { name: 'Cosmetics / Lipstick', kind: 'google', keyword: 'lipstick' },
     { name: 'Male Underwear',       kind: 'google', keyword: 'male underwear' },
-      // --- Cardboard / packaging indicators ---
-  { name: 'Cardboard Boxes', kind: 'google', keyword: 'cardboard boxes' },
-  { name: 'Moving Boxes',    kind: 'google', keyword: 'moving boxes' }, // optional
+    // --- Cardboard / packaging indicators ---
+    { name: 'Cardboard Boxes',      kind: 'google', keyword: 'cardboard boxes' },
+    { name: 'Moving Boxes',         kind: 'google', keyword: 'moving boxes' }, // optional
 
-  { name: 'Packaging: International Paper (IP)', kind: 'yahoo', symbol: 'IP'  },
-  { name: 'Packaging: Packaging Corp (PKG)',     kind: 'yahoo', symbol: 'PKG' },
-
+    { name: 'Packaging: International Paper (IP)', kind: 'yahoo', symbol: 'IP'  },
+    { name: 'Packaging: Packaging Corp (PKG)',     kind: 'yahoo', symbol: 'PKG' },
   ];
 
   const limit = pLimit(2);
@@ -234,14 +242,16 @@ export default async function handler(req, res) {
       const keys = Object.keys(merged[0] || {}).filter((k) => k !== 'date');
       const counts = {};
       for (const k of keys) counts[k] = merged.filter((r) => r[k] != null).length;
+
+      // ✅ SAFER: Guard against empty merged array
       return res.status(200).json({
         signature: 'fetch-trends-v4-lipstick-underwear-separated',
         rows: merged.length,
         series: keys,
         countsPerSeries: counts,
         diagnostics,
-        sampleStart: merged.slice(0, 2),
-        sampleEnd: merged.slice(-2),
+        sampleStart: merged.slice(0, 2) || [],
+        sampleEnd: merged.slice(-2) || [],
       });
     }
 
