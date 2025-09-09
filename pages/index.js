@@ -75,7 +75,7 @@ const SERIES_EXPLANATIONS = {
   "Male Underwear":
     "Google Trends daily interest for 'male underwear' (global), normalized to 0–100 within the selected range.",
 
-  // ✅ FIXED: Added as key-value pairs inside the object — NOT as const declarations
+  // ✅ ADDED: These were incorrectly wrapped in 'const LABELS = { }' — now added as proper object properties
   "Cardboard Boxes":
     "Google Trends interest for 'cardboard boxes' (global). Proxy for e-commerce, moving activity, and packaging demand.",
   "Moving Boxes":
