@@ -1,5 +1,6 @@
 // pages/index.js
 import React, { useEffect, useMemo, useState } from "react";
+import Head from 'next/head';
 import CorrelationHeatmap from "../components/CorrelationHeatmap.jsx";
 
 // ---------- helpers ----------
@@ -75,7 +76,6 @@ const SERIES_EXPLANATIONS = {
   "Male Underwear":
     "Google Trends daily interest for 'male underwear' (global), normalized to 0–100 within the selected range.",
 
-  // ✅ ADDED: These were incorrectly wrapped in 'const LABELS = { }' — now added as proper object properties
   "Cardboard Boxes":
     "Google Trends interest for 'cardboard boxes' (global). Proxy for e-commerce, moving activity, and packaging demand.",
   "Moving Boxes":
@@ -96,6 +96,18 @@ export default function Home() {
   const [smooth, setSmooth] = useState(true);
   const [data, setData] = useState(null); // merged rows from API
   const [loading, setLoading] = useState(false);
+
+  // ✅ Responsive: Track window width for heatmap sizing
+  const [windowWidth, setWindowWidth] = useState(820);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setWindowWidth(window.innerWidth);
+      const handleResize = () => setWindowWidth(window.innerWidth);
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
+  }, []);
 
   useEffect(() => {
     let stop = false;
@@ -139,67 +151,123 @@ export default function Home() {
   }, [data, smooth]);
 
   return (
-    <div style={{ maxWidth: 1200, margin: "24px auto", padding: "0 16px" }}>
-      <header style={{ display: "flex", alignItems: "baseline", gap: 16 }}>
-        <h1 style={{ fontSize: 28, margin: 0 }}>📈 Quick Look Trends</h1>
-        <a href="/multiples" style={{ fontSize: 16 }}>View Small Multiples →</a>
-      </header>
+    <>
+      {/* ✅ Critical for mobile responsiveness */}
+      <Head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Quick Look Trends</title>
+      </Head>
 
-      <section style={{ marginTop: 12, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-        <div>
-          <label style={{ marginRight: 8 }}>Range:</label>
-          <select
-            value={days}
-            onChange={(e) => setDays(Number(e.target.value))}
+      {/* ✅ Fluid container for all screen sizes */}
+      <div style={{
+        maxWidth: '100%',
+        width: '100%',
+        margin: '0 auto',
+        padding: '16px',
+        boxSizing: 'border-box',
+      }}>
+        <header style={{
+          display: "flex",
+          alignItems: "baseline",
+          gap: '1rem',
+          flexWrap: 'wrap'
+        }}>
+          {/* ✅ Responsive font size */}
+          <h1 style={{
+            fontSize: 'clamp(1.5rem, 5vw, 2rem)',
+            margin: 0,
+            lineHeight: 1.2
+          }}>
+            📈 Quick Look Trends
+          </h1>
+          <a
+            href="/multiples"
+            style={{
+              fontSize: 'clamp(0.875rem, 2.5vw, 1rem)',
+              textDecoration: 'none',
+              color: '#0066cc'
+            }}
           >
-            <option value={180}>6 months</option>
-            <option value={365}>12 months</option>
-            <option value={730}>24 months</option>
-          </select>
-        </div>
+            View Small Multiples →
+          </a>
+        </header>
 
-        <div>
-          <label style={{ marginRight: 8 }}>Values:</label>
-          <span>Normalized (0–100)</span>
-        </div>
+        <section style={{
+          marginTop: '1rem',
+          display: "flex",
+          gap: '0.75rem',
+          alignItems: "center",
+          flexWrap: "wrap",
+          fontSize: 'clamp(0.875rem, 2.5vw, 1rem)'
+        }}>
+          <div>
+            <label style={{ marginRight: 8 }}>Range:</label>
+            <select
+              value={days}
+              onChange={(e) => setDays(Number(e.target.value))}
+              style={{ fontSize: 'inherit', padding: '0.25rem 0.5rem' }}
+            >
+              <option value={180}>6 months</option>
+              <option value={365}>12 months</option>
+              <option value={730}>24 months</option>
+            </select>
+          </div>
 
-        <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-          <input
-            type="checkbox"
-            checked={smooth}
-            onChange={(e) => setSmooth(e.target.checked)}
+          <div>
+            <label style={{ marginRight: 8 }}>Values:</label>
+            <span>Normalized (0–100)</span>
+          </div>
+
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={smooth}
+              onChange={(e) => setSmooth(e.target.checked)}
+            />
+            7-day smoothing
+          </label>
+        </section>
+
+        <h3 style={{ marginTop: '1.5rem', fontSize: 'clamp(1.125rem, 3vw, 1.5rem)' }}>
+          🔥 Market Heat Index
+        </h3>
+        {loading && <p style={{ fontSize: 'clamp(0.875rem, 2.5vw, 1rem)' }}>Loading…</p>}
+
+        {/* ✅ Responsive Heatmap — scales with screen */}
+        <div style={{ marginTop: '2rem', overflowX: 'auto' }}>
+          <CorrelationHeatmap
+            matrix={prepared?.matrix || []}
+            labels={prepared?.keys || []}
+            size={Math.min(windowWidth - 32, 820)} // Auto-scale, max 820px
+            showLegend={true}
+            title="Correlation Heat Map (same selection)"
           />
-          7-day smoothing
-        </label>
-      </section>
+        </div>
 
-      <h3 style={{ marginTop: 18 }}>🔥 Market Heat Index</h3>
-      {loading && <p>Loading…</p>}
-
-      {/* (Your main line chart stays as-is; omitted here) */}
-
-      <div style={{ marginTop: 28 }}>
-        <CorrelationHeatmap
-          matrix={prepared?.matrix || []}
-          labels={prepared?.keys || []}
-          size={820}       // 🔸 bigger map
-          showLegend={true}
-          title="Correlation Heat Map (same selection)"
-        />
+        {/* Explanations */}
+        <section style={{ marginTop: '2rem' }}>
+          <h3 style={{ fontSize: 'clamp(1.125rem, 3vw, 1.5rem)' }}>🧭 What you’re seeing</h3>
+          <p style={{
+            maxWidth: '100%',
+            lineHeight: 1.6,
+            fontSize: 'clamp(0.875rem, 2.5vw, 1rem)'
+          }}>
+            {HEATMAP_EXPLANATION}
+          </p>
+          <ul style={{
+            marginTop: '0.5rem',
+            lineHeight: 1.6,
+            fontSize: 'clamp(0.875rem, 2.5vw, 1rem)',
+            paddingLeft: '1.25rem'
+          }}>
+            {Object.entries(SERIES_EXPLANATIONS).map(([k, v]) => (
+              <li key={k}>
+                <strong>{k}:</strong> {v}
+              </li>
+            ))}
+          </ul>
+        </section>
       </div>
-
-      {/* Explanations */}
-      <section style={{ marginTop: 28 }}>
-        <h3>🧭 What you’re seeing</h3>
-        <p style={{ maxWidth: 900, lineHeight: 1.6 }}>{HEATMAP_EXPLANATION}</p>
-        <ul style={{ marginTop: 8, lineHeight: 1.6 }}>
-          {Object.entries(SERIES_EXPLANATIONS).map(([k, v]) => (
-            <li key={k}>
-              <strong>{k}:</strong> {v}
-            </li>
-          ))}
-        </ul>
-      </section>
-    </div>
+    </>
   );
 }
