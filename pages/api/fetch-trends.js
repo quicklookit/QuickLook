@@ -41,10 +41,13 @@ function mergeSeries(seriesList) {
 
 /* ===================== fetchers ===================== */
 
+// Yahoo Finance daily close
+// ⚠️ NOTE: As of Nov 1, 2021, Yahoo Finance is BLOCKED in mainland China.
+// If your server or users are in China, these requests will fail.
 async function fetchYahooDaily(symbol, days, diag) {
   const end = Math.floor(Date.now() / 1000);
   const start = end - days * 24 * 60 * 60;
-  // ✅ FIXED: Removed extra spaces after /chart/
+  // ✅ FIXED: Removed extra spaces after /chart/ — critical fix!
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
     symbol
   )}?period1=${start}&period2=${end}&interval=1d`;
