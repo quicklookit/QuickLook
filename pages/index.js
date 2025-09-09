@@ -74,18 +74,8 @@ const SERIES_EXPLANATIONS = {
     "Google Trends daily interest for 'lipstick' (global), normalized to 0–100 within the selected range.",
   "Male Underwear":
     "Google Trends daily interest for 'male underwear' (global), normalized to 0–100 within the selected range.",
-  // LABELS (add these lines)
-const LABELS = {
-  // ...existing...
-  "Cardboard Boxes": "Cardboard Boxes (search interest)",
-  "Moving Boxes": "Moving Boxes (search interest)",
-  "Packaging: International Paper (IP)": "Packaging: International Paper (IP)",
-  "Packaging: Packaging Corp (PKG)": "Packaging: Packaging Corp (PKG)",
-};
 
-// EXPLANATIONS (add these lines)
-const EXPLANATIONS = {
-  // ...existing...
+  // ✅ FIXED: Added as key-value pairs inside the object — NOT as const declarations
   "Cardboard Boxes":
     "Google Trends interest for 'cardboard boxes' (global). Proxy for e-commerce, moving activity, and packaging demand.",
   "Moving Boxes":
@@ -94,8 +84,6 @@ const EXPLANATIONS = {
     "Stock proxy for packaging demand (International Paper). Normalized price in your selected window.",
   "Packaging: Packaging Corp (PKG)":
     "Stock proxy for corrugated packaging demand (Packaging Corp of America). Normalized price.",
-};
-
 };
 
 const HEATMAP_EXPLANATION =
