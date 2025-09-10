@@ -1,7 +1,7 @@
 // pages/index.js
 import React, { useEffect, useMemo, useState } from "react";
 import Head from 'next/head';
-import CorrelationHeatmap from "../components/CorrelationHeatmap.jsx";
+import Script from 'next/script';
 
 // ---------- helpers ----------
 function parseDate(d) {
@@ -88,7 +88,7 @@ const SERIES_EXPLANATIONS = {
 
 const HEATMAP_EXPLANATION =
   "The heat map shows the Pearson correlation of the selected, smoothed series (rows vs. columns). " +
-  "Green indicates positive co-movement; red indicates inverse co-movement. The diagonal is 1.0 by definition.";
+  "Blue indicates positive co-movement; red indicates inverse co-movement. The diagonal is 1.0 by definition. Values shown inside each cell.";
 
 // ---------- page ----------
 export default function Home() {
@@ -150,15 +150,101 @@ export default function Home() {
     return { keys, matrix: M };
   }, [data, smooth]);
 
+  // 🎨 Render Plotly heatmap when data is ready
+  useEffect(() => {
+    if (!prepared || !prepared.matrix.length || !window.Plotly) return;
+
+    const { keys, matrix } = prepared;
+
+    // Prepare annotations (text inside cells)
+    const annotations = [];
+    for (let i = 0; i < keys.length; i++) {
+      for (let j = 0; j < keys.length; j++) {
+        annotations.push({
+          x: keys[j],
+          y: keys[i],
+          text: matrix[i][j].toFixed(2),
+          font: {
+            color: Math.abs(matrix[i][j]) > 0.5 ? 'white' : 'black',
+            size: 11
+          },
+          showarrow: false
+        });
+      }
+    }
+
+    const data = [{
+      z: matrix,
+      x: keys,
+      y: keys,
+      type: 'heatmap',
+      colorscale: [
+        [0, '#2c7bb6'],    // Dark blue (negative)
+        [0.5, '#ffffbf'],  // Neutral yellow/white (zero)
+        [1, '#d7191c']     // Dark red (positive)
+      ],
+      zmin: -1,
+      zmax: 1,
+      showscale: true,
+      hovertemplate: 'Correlation: %{z}<extra></extra>'
+    }];
+
+    const layout = {
+      title: {
+        text: 'Correlation Heat Map (same selection)',
+        font: { size: 18, color: '#333' },
+        x: 0.5,
+        y: 0.95
+      },
+      xaxis: {
+        title: '',
+        tickangle: -45,
+        tickfont: { size: 11 }
+      },
+      yaxis: {
+        title: '',
+        tickfont: { size: 11 },
+        autorange: 'reversed'
+      },
+      annotations: annotations,
+      margin: { t: 80, b: 140, l: 80, r: 50 },
+      width: Math.min(windowWidth - 32, 820),
+      height: Math.min(windowWidth - 32, 820),
+      font: { family: 'Arial' }
+    };
+
+    Plotly.newPlot('plotly-heatmap-container', data, layout);
+
+    // Cleanup on unmount
+    return () => {
+      const el = document.getElementById('plotly-heatmap-container');
+      if (el) Plotly.purge(el);
+    };
+  }, [prepared, windowWidth]);
+
   return (
     <>
-      {/* ✅ Critical for mobile responsiveness */}
+      {/* Load Plotly */}
+      <Script
+        src="https://cdn.plot.ly/plotly-2.30.0.min.js"
+        onLoad={() => {
+          // Re-trigger render if Plotly loads after component mount
+          if (prepared) {
+            setTimeout(() => {
+              if (window.Plotly) {
+                const event = new Event('resize');
+                window.dispatchEvent(event);
+              }
+            }, 100);
+          }
+        }}
+      />
+
       <Head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Quick Look Trends</title>
       </Head>
 
-      {/* ✅ Fluid container for all screen sizes */}
       <div style={{
         maxWidth: '100%',
         width: '100%',
@@ -172,7 +258,6 @@ export default function Home() {
           gap: '1rem',
           flexWrap: 'wrap'
         }}>
-          {/* ✅ Responsive font size */}
           <h1 style={{
             fontSize: 'clamp(1.5rem, 5vw, 2rem)',
             margin: 0,
@@ -233,15 +318,20 @@ export default function Home() {
         </h3>
         {loading && <p style={{ fontSize: 'clamp(0.875rem, 2.5vw, 1rem)' }}>Loading…</p>}
 
-        {/* ✅ Responsive Heatmap — scales with screen */}
+        {/* ✅ Plotly Heatmap Container */}
         <div style={{ marginTop: '2rem', overflowX: 'auto' }}>
-          <CorrelationHeatmap
-            matrix={prepared?.matrix || []}
-            labels={prepared?.keys || []}
-            size={Math.min(windowWidth - 32, 820)} // Auto-scale, max 820px
-            showLegend={true}
-            title="Correlation Heat Map (same selection)"
-          />
+          <div
+            id="plotly-heatmap-container"
+            style={{
+              width: '100%',
+              minWidth: '300px',
+              margin: '0 auto',
+              background: '#fff',
+              padding: '10px',
+              borderRadius: '8px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+            }}
+          ></div>
         </div>
 
         {/* Explanations */}
