@@ -341,7 +341,7 @@ export default async function handler(req, res) {
 
     const merged = mergeSeries(series);
 
-    if (req.query.debug === '1') {
+       if (req.query.debug === '1') {
       const keys = Object.keys(merged[0] || {}).filter((k) => k !== 'date');
       const counts = {};
       for (const k of keys) counts[k] = merged.filter((r) => r[k] != null).length;
@@ -356,3 +356,19 @@ export default async function handler(req, res) {
         sampleEnd: merged.slice(-2) || [],
       });
     }
+
+    // ✅ Normal response (non-debug)
+    res.status(200).json({
+      signature: 'fetch-trends-v5-regional-credit-cardboard-lipstick',
+      rows: merged.length,
+      data: merged,
+    });
+
+  } catch (error) { // ✅ Close try block
+    console.error('API Error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error.message,
+    });
+  }
+} // ✅ Close handler function
