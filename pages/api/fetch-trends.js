@@ -1,6 +1,7 @@
 // pages/api/fetch-trends.js
 // Gold & Nasdaq from Yahoo, BTC from CoinGecko,
-// Cosmetics/Lipstick + Male Underwear + Cardboard Boxes + Credit Trends — NOW BY REGION (America, Asia, Europe)
+// Regional Google Trends: Cardboard Boxes, Lipstick, Male Underwear
+// Regional Mock Trends: Credit Card Debt, Delinquencies — NOW WITH UNIQUE REGIONAL NOISE
 // Includes retries, normalization, and ?debug=1 diagnostics.
 
 import googleTrends from 'google-trends-api';
@@ -105,7 +106,7 @@ async function fetchCoinGeckoBTC(days, diag) {
   }
 }
 
-// Google Trends keyword — segmented (30-day windows) to get daily resolution — NOW WITH GEO
+// Google Trends keyword — segmented (30-day windows) to get daily resolution — WITH GEO
 async function fetchGoogleKeyword(keyword, days, geo = '', diag) {
   const endTime = new Date();
   const startTime = new Date(Date.now() - days * DAY);
@@ -126,7 +127,7 @@ async function fetchGoogleKeyword(keyword, days, geo = '', diag) {
         keyword,
         startTime: segStart,
         endTime: segEnd,
-        geo, // <-- GEO FILTER ADDED HERE
+        geo, // <-- GEO FILTER
         hl: 'en-US',
         timezone: 0,
         granularTimeResolution: true,
@@ -170,24 +171,24 @@ async function fetchGoogleKeyword(keyword, days, geo = '', diag) {
   return rows;
 }
 
-// 🚨 PLACEHOLDER: Mock function for Credit Card Debt (replace with real API)
+// 🚨 FIXED: Mock function for Credit Card Debt — REGION-SPECIFIC NOISE
 async function fetchCreditCardDebt(region, days, diag) {
-  // Simulate delay
   await sleep(200);
 
-  // Mock data per region — replace with real API
   const mockData = {
-    'America': { trend: 85, insight: 'High consumer debt, rising interest rates' },
-    'Asia': { trend: 45, insight: 'Lower credit reliance, cash-preference culture' },
-    'Europe': { trend: 60, insight: 'Moderate debt, varies by country' }
+    'America': { trend: 85, seed: 0.12, amplitude: 8, insight: 'High consumer debt, rising interest rates' },
+    'Asia':    { trend: 45, seed: 0.25, amplitude: 3, insight: 'Lower credit reliance, cash-preference culture' },
+    'Europe':  { trend: 60, seed: 0.18, amplitude: 5, insight: 'Moderate debt, varies by country' }
   };
 
-  const baseValue = mockData[region]?.trend || 50;
+  const config = mockData[region] || { trend: 50, seed: 0.15, amplitude: 4 };
+  const { trend: baseValue, seed, amplitude } = config;
+
   const rows = [];
   for (let i = days - 1; i >= 0; i--) {
     const date = new Date(Date.now() - i * DAY).toISOString().slice(0, 10);
-    // Add slight noise for realism
-    const noise = (Math.sin(i * 0.1) * 5) | 0;
+    // ✅ Unique noise per region using seed + region name
+    const noise = (Math.sin((i * seed) + (region.charCodeAt(0) * 0.01)) * amplitude) | 0;
     rows.push({
       date,
       raw: baseValue + noise,
@@ -200,21 +201,24 @@ async function fetchCreditCardDebt(region, days, diag) {
   return rows;
 }
 
-// 🚨 PLACEHOLDER: Mock function for Delinquencies (replace with real API)
+// 🚨 FIXED: Mock function for Delinquencies — REGION-SPECIFIC NOISE
 async function fetchDelinquencies(region, days, diag) {
   await sleep(200);
 
   const mockData = {
-    'America': { trend: 70, insight: 'Rising delinquencies among Gen Z' },
-    'Asia': { trend: 20, insight: 'Strict lending, low default rates' },
-    'Europe': { trend: 35, insight: 'Stable, but rising in Southern Europe' }
+    'America': { trend: 70, seed: 0.1, amplitude: 6, insight: 'Rising delinquencies among Gen Z' },
+    'Asia':    { trend: 20, seed: 0.3, amplitude: 2, insight: 'Strict lending, low default rates' },
+    'Europe':  { trend: 35, seed: 0.2, amplitude: 4, insight: 'Stable, but rising in Southern Europe' }
   };
 
-  const baseValue = mockData[region]?.trend || 30;
+  const config = mockData[region] || { trend: 30, seed: 0.15, amplitude: 3 };
+  const { trend: baseValue, seed, amplitude } = config;
+
   const rows = [];
   for (let i = days - 1; i >= 0; i--) {
     const date = new Date(Date.now() - i * DAY).toISOString().slice(0, 10);
-    const noise = (Math.cos(i * 0.15) * 4) | 0;
+    // ✅ Unique noise per region using seed + region name
+    const noise = (Math.sin((i * seed) + (region.charCodeAt(0) * 0.01)) * amplitude) | 0;
     rows.push({
       date,
       raw: baseValue + noise,
@@ -250,13 +254,14 @@ export default async function handler(req, res) {
     { name: 'Nasdaq (search)',   kind: 'yahoo',     symbol: '^IXIC'},
   ];
 
-  // Regional SOURCES — dynamically generated per region
+  // Regional Google Trends Topics
   const REGIONAL_TOPICS = [
     { name: 'Cardboard Boxes', keyword: 'cardboard boxes' },
     { name: 'Lipstick Sales',  keyword: 'lipstick' },
     { name: 'Male Underwear',  keyword: 'male underwear' },
   ];
 
+  // Regional Credit Topics (mocked)
   const CREDIT_TOPICS = [
     { name: 'Credit Card Debt Level', fetcher: fetchCreditCardDebt },
     { name: 'Credit Card Delinquencies', fetcher: fetchDelinquencies },
@@ -351,12 +356,3 @@ export default async function handler(req, res) {
         sampleEnd: merged.slice(-2) || [],
       });
     }
-
-    return res.status(200).json(merged);
-  } catch (err) {
-    console.error('fetch-trends error:', err);
-    return res
-      .status(500)
-      .json({ error: 'Failed to fetch trends', detail: String(err) });
-  }
-}
