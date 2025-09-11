@@ -1,6 +1,6 @@
 // pages/api/fetch-trends.js
 // Gold & Nasdaq from Yahoo, BTC from CoinGecko,
-// Cosmetics/Lipstick + Male Underwear from Google Trends (distinct keywords).
+// Cosmetics/Lipstick + Male Underwear + Cardboard Boxes + Credit Trends — NOW BY REGION (America, Asia, Europe)
 // Includes retries, normalization, and ?debug=1 diagnostics.
 
 import googleTrends from 'google-trends-api';
@@ -47,7 +47,6 @@ function mergeSeries(seriesList) {
 async function fetchYahooDaily(symbol, days, diag) {
   const end = Math.floor(Date.now() / 1000);
   const start = end - days * 24 * 60 * 60;
-  // ✅ FIXED: Removed extra spaces after /chart/ — critical fix!
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
     symbol
   )}?period1=${start}&period2=${end}&interval=1d`;
@@ -106,8 +105,8 @@ async function fetchCoinGeckoBTC(days, diag) {
   }
 }
 
-// Google Trends keyword — segmented (30-day windows) to get daily resolution
-async function fetchGoogleKeyword(keyword, days, diag) {
+// Google Trends keyword — segmented (30-day windows) to get daily resolution — NOW WITH GEO
+async function fetchGoogleKeyword(keyword, days, geo = '', diag) {
   const endTime = new Date();
   const startTime = new Date(Date.now() - days * DAY);
 
@@ -127,13 +126,12 @@ async function fetchGoogleKeyword(keyword, days, diag) {
         keyword,
         startTime: segStart,
         endTime: segEnd,
-        geo: '', // global
+        geo, // <-- GEO FILTER ADDED HERE
         hl: 'en-US',
         timezone: 0,
         granularTimeResolution: true,
       });
 
-      // ✅ IMPROVED: Wrap JSON.parse in try/catch for better error handling
       let parsed;
       try {
         parsed = JSON.parse(json);
@@ -172,6 +170,63 @@ async function fetchGoogleKeyword(keyword, days, diag) {
   return rows;
 }
 
+// 🚨 PLACEHOLDER: Mock function for Credit Card Debt (replace with real API)
+async function fetchCreditCardDebt(region, days, diag) {
+  // Simulate delay
+  await sleep(200);
+
+  // Mock data per region — replace with real API
+  const mockData = {
+    'America': { trend: 85, insight: 'High consumer debt, rising interest rates' },
+    'Asia': { trend: 45, insight: 'Lower credit reliance, cash-preference culture' },
+    'Europe': { trend: 60, insight: 'Moderate debt, varies by country' }
+  };
+
+  const baseValue = mockData[region]?.trend || 50;
+  const rows = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const date = new Date(Date.now() - i * DAY).toISOString().slice(0, 10);
+    // Add slight noise for realism
+    const noise = (Math.sin(i * 0.1) * 5) | 0;
+    rows.push({
+      date,
+      raw: baseValue + noise,
+      value: baseValue + noise,
+    });
+  }
+
+  diag.ok = true;
+  diag.points = rows.length;
+  return rows;
+}
+
+// 🚨 PLACEHOLDER: Mock function for Delinquencies (replace with real API)
+async function fetchDelinquencies(region, days, diag) {
+  await sleep(200);
+
+  const mockData = {
+    'America': { trend: 70, insight: 'Rising delinquencies among Gen Z' },
+    'Asia': { trend: 20, insight: 'Strict lending, low default rates' },
+    'Europe': { trend: 35, insight: 'Stable, but rising in Southern Europe' }
+  };
+
+  const baseValue = mockData[region]?.trend || 30;
+  const rows = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const date = new Date(Date.now() - i * DAY).toISOString().slice(0, 10);
+    const noise = (Math.cos(i * 0.15) * 4) | 0;
+    rows.push({
+      date,
+      raw: baseValue + noise,
+      value: baseValue + noise,
+    });
+  }
+
+  diag.ok = true;
+  diag.points = rows.length;
+  return rows;
+}
+
 /* ===================== API ===================== */
 
 export default async function handler(req, res) {
@@ -181,23 +236,59 @@ export default async function handler(req, res) {
     ? parseInt(req.query.days, 10)
     : 365;
 
-  // DISTINCT sources (no duplicate or extra bracket below!)
-  // ✅ FORMATTING: Fixed indentation for readability
-  const SOURCES = [
+  // Define regions and their Google Trends geo codes
+  const regions = {
+    America: 'US',
+    Asia: 'CN,KR,JP,IN',
+    Europe: 'DE,FR,GB,IT'
+  };
+
+  // Base SOURCES (unchanged)
+  const BASE_SOURCES = [
     { name: 'Gold (search)',     kind: 'yahoo',     symbol: 'GLD'  },
     { name: 'Bitcoin (search)',  kind: 'coingecko', symbol: 'BTC'  },
     { name: 'Nasdaq (search)',   kind: 'yahoo',     symbol: '^IXIC'},
-
-    // Google Trends keywords (distinct)
-    { name: 'Cosmetics / Lipstick', kind: 'google', keyword: 'lipstick' },
-    { name: 'Male Underwear',       kind: 'google', keyword: 'male underwear' },
-    // --- Cardboard / packaging indicators ---
-    { name: 'Cardboard Boxes',      kind: 'google', keyword: 'cardboard boxes' },
-    { name: 'Moving Boxes',         kind: 'google', keyword: 'moving boxes' }, // optional
-
-    { name: 'Packaging: International Paper (IP)', kind: 'yahoo', symbol: 'IP'  },
-    { name: 'Packaging: Packaging Corp (PKG)',     kind: 'yahoo', symbol: 'PKG' },
   ];
+
+  // Regional SOURCES — dynamically generated per region
+  const REGIONAL_TOPICS = [
+    { name: 'Cardboard Boxes', keyword: 'cardboard boxes' },
+    { name: 'Lipstick Sales',  keyword: 'lipstick' },
+    { name: 'Male Underwear',  keyword: 'male underwear' },
+  ];
+
+  const CREDIT_TOPICS = [
+    { name: 'Credit Card Debt Level', fetcher: fetchCreditCardDebt },
+    { name: 'Credit Card Delinquencies', fetcher: fetchDelinquencies },
+  ];
+
+  // Build full source list
+  const SOURCES = [...BASE_SOURCES];
+
+  // Add Google Trends regional sources
+  for (const [regionName, geoCode] of Object.entries(regions)) {
+    for (const topic of REGIONAL_TOPICS) {
+      SOURCES.push({
+        name: `${topic.name} (${regionName})`,
+        kind: 'google',
+        keyword: topic.keyword,
+        geo: geoCode,
+        region: regionName,
+      });
+    }
+  }
+
+  // Add Credit regional sources
+  for (const [regionName] of Object.entries(regions)) {
+    for (const topic of CREDIT_TOPICS) {
+      SOURCES.push({
+        name: `${topic.name} (${regionName})`,
+        kind: 'credit',
+        fetcher: topic.fetcher,
+        region: regionName,
+      });
+    }
+  }
 
   const limit = pLimit(2);
   const diagnostics = [];
@@ -211,6 +302,8 @@ export default async function handler(req, res) {
             kind: src.kind,
             symbol: src.symbol,
             keyword: src.keyword,
+            geo: src.geo,
+            region: src.region,
           };
 
           let rows = [];
@@ -219,13 +312,15 @@ export default async function handler(req, res) {
           } else if (src.kind === 'coingecko') {
             rows = await fetchCoinGeckoBTC(days, diag);
           } else if (src.kind === 'google') {
-            rows = await fetchGoogleKeyword(src.keyword, days, diag);
+            rows = await fetchGoogleKeyword(src.keyword, days, src.geo, diag);
+          } else if (src.kind === 'credit') {
+            rows = await src.fetcher(src.region, days, diag);
           }
 
           diagnostics.push(diag);
 
-          // Normalize market rows (google rows already normalized inside)
-          if (src.kind !== 'google') {
+          // Normalize market rows (google & credit already normalized inside or mocked)
+          if (src.kind !== 'google' && src.kind !== 'credit') {
             const norm = normalizeArray(rows.map((r) => r.value));
             rows = rows.map((r, i) => ({
               date: r.date,
@@ -246,9 +341,8 @@ export default async function handler(req, res) {
       const counts = {};
       for (const k of keys) counts[k] = merged.filter((r) => r[k] != null).length;
 
-      // ✅ SAFER: Guard against empty merged array
       return res.status(200).json({
-        signature: 'fetch-trends-v4-lipstick-underwear-separated',
+        signature: 'fetch-trends-v5-regional-credit-cardboard-lipstick',
         rows: merged.length,
         series: keys,
         countsPerSeries: counts,
