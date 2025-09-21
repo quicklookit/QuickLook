@@ -1,5 +1,5 @@
 // pages/api/fetch-trends.js
-// Gold & Nasdaq from Yahoo, BTC from CoinGecko,
+// Gold & Nasdaq from Yahoo, BTC/XRP from CoinGecko,
 // Regional Google Trends: Cardboard Boxes, Lipstick, Male Underwear
 // Regional Mock Trends: Credit Card Debt, Delinquencies — NOW WITH UNIQUE REGIONAL NOISE
 // Includes retries, normalization, and ?debug=1 diagnostics.
@@ -82,9 +82,9 @@ async function fetchYahooDaily(symbol, days, diag) {
   return [];
 }
 
-// CoinGecko BTC daily USD
-async function fetchCoinGeckoBTC(days, diag) {
-  const url = `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=${days}`;
+// Generic CoinGecko token daily USD — ✅ ADDED FOR XRP
+async function fetchCoinGeckoToken(tokenId, days, diag) {
+  const url = `https://api.coingecko.com/api/v3/coins/${tokenId}/market_chart?vs_currency=usd&days=${days}`;
   try {
     const r = await fetch(url, {
       headers: { accept: 'application/json', 'user-agent': UA },
@@ -104,6 +104,11 @@ async function fetchCoinGeckoBTC(days, diag) {
     diag.error = String(e?.message || e);
     return [];
   }
+}
+
+// CoinGecko BTC daily USD
+async function fetchCoinGeckoBTC(days, diag) {
+  return fetchCoinGeckoToken('bitcoin', days, diag);
 }
 
 // Google Trends keyword — segmented (30-day windows) to get daily resolution — WITH GEO
@@ -247,11 +252,12 @@ export default async function handler(req, res) {
     Europe: 'DE,FR,GB,IT'
   };
 
-  // Base SOURCES (unchanged)
+  // Base SOURCES (unchanged) — ✅ XRP ADDED HERE
   const BASE_SOURCES = [
     { name: 'Gold (search)',     kind: 'yahoo',     symbol: 'GLD'  },
     { name: 'Bitcoin (search)',  kind: 'coingecko', symbol: 'BTC'  },
     { name: 'Nasdaq (search)',   kind: 'yahoo',     symbol: '^IXIC'},
+    { name: 'XRP (search)',      kind: 'coingecko', symbol: 'XRP'  }, // ✅ ADDED
   ];
 
   // Regional Google Trends Topics
@@ -315,7 +321,11 @@ export default async function handler(req, res) {
           if (src.kind === 'yahoo') {
             rows = await fetchYahooDaily(src.symbol, days, diag);
           } else if (src.kind === 'coingecko') {
-            rows = await fetchCoinGeckoBTC(days, diag);
+            if (src.symbol === 'BTC') {
+              rows = await fetchCoinGeckoBTC(days, diag);
+            } else if (src.symbol === 'XRP') { // ✅ Handle XRP
+              rows = await fetchCoinGeckoToken('ripple', days, diag); // CoinGecko ID is 'ripple'
+            }
           } else if (src.kind === 'google') {
             rows = await fetchGoogleKeyword(src.keyword, days, src.geo, diag);
           } else if (src.kind === 'credit') {
@@ -341,13 +351,13 @@ export default async function handler(req, res) {
 
     const merged = mergeSeries(series);
 
-       if (req.query.debug === '1') {
+    if (req.query.debug === '1') {
       const keys = Object.keys(merged[0] || {}).filter((k) => k !== 'date');
       const counts = {};
       for (const k of keys) counts[k] = merged.filter((r) => r[k] != null).length;
 
       return res.status(200).json({
-        signature: 'fetch-trends-v5-regional-credit-cardboard-lipstick',
+        signature: 'fetch-trends-v5-regional-credit-cardboard-lipstick-xrp',
         rows: merged.length,
         series: keys,
         countsPerSeries: counts,
@@ -359,16 +369,16 @@ export default async function handler(req, res) {
 
     // ✅ Normal response (non-debug)
     res.status(200).json({
-      signature: 'fetch-trends-v5-regional-credit-cardboard-lipstick',
+      signature: 'fetch-trends-v5-regional-credit-cardboard-lipstick-xrp',
       rows: merged.length,
       data: merged,
     });
 
-  } catch (error) { // ✅ Close try block
+  } catch (error) {
     console.error('API Error:', error);
     res.status(500).json({
       error: 'Internal Server Error',
       message: error.message,
     });
   }
-} // ✅ Close handler function
+}
