@@ -1,7 +1,7 @@
 // pages/api/fetch-trends.js
 // Gold & Nasdaq from Yahoo, BTC/XRP from CoinGecko,
 // Regional Google Trends: Cardboard Boxes, Lipstick, Male Underwear
-// Regional Mock Trends: Credit Card Debt, Delinquencies — NOW WITH UNIQUE REGIONAL NOISE 
+// Regional Mock Trends: Credit Card Debt, Delinquencies — NOW WITH UNIQUE REGIONAL NOISE
 // Includes retries, normalization, and ?debug=1 diagnostics.
 
 import googleTrends from 'google-trends-api';
